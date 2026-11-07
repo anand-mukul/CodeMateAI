@@ -108,7 +108,7 @@ class PromoService:
         db: AsyncSession,
         user: User,
         code: str,
-        plan_id: str = "autopilot_daily",
+        plan_id: str = "autopilot_weekly",
     ) -> dict:
         """
         Redeems a 100% free promotional pass.
@@ -122,7 +122,7 @@ class PromoService:
         plan_res = await db.execute(plan_query)
         plan = plan_res.scalars().first()
         if not plan:
-            plan_query = select(Plan).where(Plan.id == "autopilot_daily")
+            plan_query = select(Plan).where(Plan.id == "autopilot_weekly")
             plan_res = await db.execute(plan_query)
             plan = plan_res.scalars().first()
 

@@ -259,7 +259,7 @@ class PaymentService:
                 pay_rec.provider_payment_id = payment_id
                 pay_rec.verified_at = now
                 notes = payload_entity.get("notes", {})
-                plan_id = notes.get("plan_id", "pro")
+                plan_id = notes.get("plan_id") or pay_rec.plan_id or "core_daily"
                 await SubscriptionService.activate_subscription(
                     db, user_id=pay_rec.user_id, plan_id=plan_id, provider="razorpay"
                 )

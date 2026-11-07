@@ -628,7 +628,7 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
                       )}
                       {isAutopilot && (
                         <div className="flex items-center gap-1 justify-end">
-                          <span className="text-[10px] text-slate-500 line-through">₹199</span>
+                          <span className="text-[10px] text-slate-500 line-through">₹299</span>
                           <span className="text-[8px] font-bold text-amber-400 bg-amber-950/60 px-1 py-0.2 rounded border border-amber-500/30">
                             {couponDiscountPercent > 0 ? `${couponDiscountPercent}% EXTRA OFF` : '80% OFF'}
                           </span>

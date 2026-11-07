@@ -310,7 +310,7 @@ async def get_authorized_provider(
             api_key_override=None,
         )
 
-    # For paid passes (core_daily, autopilot_daily), allow requested models or fallback to managed fast model
+    # For paid passes (core_daily, autopilot_weekly), allow requested models or fallback to managed fast model
     return ProviderManager.get_provider(
         override=provider_override,
         model_override=model_override,

@@ -2,7 +2,7 @@
 CodeMate AI — Solution Generation, Optimization, and Error Diagnostic Schemas
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional
 from pydantic import BaseModel, Field, field_validator
 from app.schemas.problem import ProblemRequest, normalize_language_str
 

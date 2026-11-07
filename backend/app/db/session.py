@@ -6,7 +6,7 @@ connection pooling, foreign-key enforcement, plan synchronization, and promo cod
 
 import json
 from typing import AsyncGenerator, Dict, Any
-from sqlalchemy import delete, event, select, text
+from sqlalchemy import delete, event, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
@@ -179,7 +179,7 @@ async def init_db() -> None:
 
             await conn.run_sync(migrate_sqlite_columns)
 
-    # Seed or synchronize default plans (Free Tier, Core Pass ₹20, AutoPilot Pass ₹40)
+    # Seed or synchronize default plans: ONLY Free Tier and the TWO official paid plans (₹21/day Core Pass, ₹61/week AutoPilot Pass)
     async with async_session_factory() as session:
         default_plans = [
             Plan(
@@ -231,69 +231,6 @@ async def init_db() -> None:
                 ]),
                 active=True,
             ),
-            Plan(
-                id="autopilot_daily",
-                name="AutoPilot Pass (Daily Legacy)",
-                description="Legacy daily pass alias",
-                price=2100,  # ₹21 in paise
-                currency="INR",
-                billing_interval="day",
-                device_limit=1,
-                concurrent_session_limit=1,
-                ai_usage_limit=100,
-                feature_entitlements=json.dumps([
-                    "analyze",
-                    "explain",
-                    "generate",
-                    "optimize",
-                    "fix",
-                    "autopilot",
-                    "one_click_insert",
-                    "byok",
-                    "project_intelligence",
-                ]),
-                active=True,
-            ),
-            # Backwards-compatibility aliases for legacy plans and test suites
-            Plan(
-                id="student",
-                name="Student Developer",
-                description="Legacy student pass alias",
-                price=14900,
-                currency="INR",
-                billing_interval="month",
-                device_limit=1,
-                concurrent_session_limit=1,
-                ai_usage_limit=60,
-                feature_entitlements=json.dumps(["analyze", "explain", "generate", "optimize", "fix"]),
-                active=True,
-            ),
-            Plan(
-                id="pro",
-                name="Pro Pass",
-                description="Legacy pass alias",
-                price=49900,
-                currency="INR",
-                billing_interval="month",
-                device_limit=3,
-                concurrent_session_limit=2,
-                ai_usage_limit=150,
-                feature_entitlements=json.dumps(["analyze", "explain", "generate", "optimize", "fix"]),
-                active=True,
-            ),
-            Plan(
-                id="premium",
-                name="Premium Pass",
-                description="Legacy pass alias",
-                price=99900,
-                currency="INR",
-                billing_interval="month",
-                device_limit=1,
-                concurrent_session_limit=1,
-                ai_usage_limit=500,
-                feature_entitlements=json.dumps(["analyze", "explain", "generate", "optimize", "fix", "project_intelligence"]),
-                active=True,
-            ),
         ]
 
         seeded_count = 0
@@ -314,6 +251,13 @@ async def init_db() -> None:
                 existing.feature_entitlements = plan.feature_entitlements
                 existing.active = plan.active
 
+        # Deactivate any other legacy plans (e.g. autopilot_daily, student, pro, premium) so that ONLY the 2 paid plans exist
+        await session.execute(
+            update(Plan)
+            .where(~Plan.id.in_(["free", "core_daily", "autopilot_weekly"]))
+            .values(active=False)
+        )
+
         # Clean up legacy predefined coupons so coupon management is 100% admin-managed
         await session.execute(
             delete(PromoCode).where(
@@ -322,4 +266,4 @@ async def init_db() -> None:
         )
         await session.commit()
         if seeded_count > 0:
-            logger.info(f"[Database] Synchronized {seeded_count} plan(s). Coupons are managed via Admin Portal.")
+            logger.info(f"[Database] Synchronized {seeded_count} plan(s). Exactly 2 paid plans active: ₹21/day and ₹61/week.")

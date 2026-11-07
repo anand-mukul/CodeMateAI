@@ -785,7 +785,7 @@ PRICING_PAGE_HTML = """<!DOCTYPE html>
         <a href="/portal" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-center text-xs font-semibold transition">Get Started Free</a>
       </div>
 
-      <!-- Tier 2: Core Pass (₹20/day) -->
+      <!-- Tier 2: Core Pass (₹21/day) -->
       <div class="p-6 rounded-2xl bg-slate-900 border-2 border-emerald-500/50 flex flex-col justify-between gap-5 relative shadow-xl shadow-emerald-500/5 hover:border-emerald-400 transition">
         <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-emerald-500 text-slate-950 text-[10px] font-black uppercase tracking-wider shadow">
           Most Popular • 80% OFF
@@ -798,10 +798,10 @@ PRICING_PAGE_HTML = """<!DOCTYPE html>
           <div>
             <div class="flex items-baseline gap-2">
               <span class="text-sm text-slate-500 line-through font-semibold" id="coreAnchor">₹99</span>
-              <span class="text-3xl font-extrabold text-white" id="corePrice">₹20</span>
+              <span class="text-3xl font-extrabold text-white" id="corePrice">₹21</span>
               <span class="text-xs text-slate-400"> / day</span>
             </div>
-            <span class="text-[10px] font-bold text-emerald-400 block mt-0.5">Save ₹79/day (80% Instant Discount)</span>
+            <span class="text-[10px] font-bold text-emerald-400 block mt-0.5">Save ₹78/day (80% Instant Discount)</span>
           </div>
           <p class="text-xs text-slate-400 leading-relaxed">Budget-friendly power pass for contest rounds, problem solving, and complex DSA optimization.</p>
           <div class="pt-3 border-t border-slate-800/80 flex flex-col gap-2 text-xs text-slate-300">
@@ -814,10 +814,10 @@ PRICING_PAGE_HTML = """<!DOCTYPE html>
             <div class="flex items-center gap-2"><span class="text-indigo-400 font-bold">🔒</span> <span>1 registered device • 1 active session</span></div>
           </div>
         </div>
-        <button onclick="checkoutPlan('core_daily')" id="btnCore" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-center text-xs font-semibold shadow-md shadow-emerald-600/20 transition active:scale-98">Get Core Pass (₹20/day)</button>
+        <button onclick="checkoutPlan('core_daily')" id="btnCore" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-center text-xs font-semibold shadow-md shadow-emerald-600/20 transition active:scale-98">Get Core Pass (₹21/day)</button>
       </div>
 
-      <!-- Tier 3: AutoPilot Pass (₹40/day) -->
+      <!-- Tier 3: AutoPilot Pass (₹61/week) -->
       <div class="p-6 rounded-2xl bg-gradient-to-b from-indigo-950/40 via-slate-900 to-slate-900 border-2 border-indigo-500/60 flex flex-col justify-between gap-5 relative shadow-xl shadow-indigo-500/10 hover:border-indigo-400 transition">
         <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-amber-400 to-indigo-400 text-slate-950 text-[10px] font-black uppercase tracking-wider shadow">
           ⚡ 1-Click + AutoPilot + BYOK
@@ -829,23 +829,23 @@ PRICING_PAGE_HTML = """<!DOCTYPE html>
           </div>
           <div>
             <div class="flex items-baseline gap-2">
-              <span class="text-sm text-slate-500 line-through font-semibold" id="autopilotAnchor">₹199</span>
-              <span class="text-3xl font-extrabold text-white" id="autopilotPrice">₹40</span>
-              <span class="text-xs text-slate-400"> / day</span>
+              <span class="text-sm text-slate-500 line-through font-semibold" id="autopilotAnchor">₹299</span>
+              <span class="text-3xl font-extrabold text-white" id="autopilotPrice">₹61</span>
+              <span class="text-xs text-slate-400"> / week</span>
             </div>
-            <span class="text-[10px] font-bold text-amber-400 block mt-0.5">Save ₹159/day (80% Instant Discount)</span>
+            <span class="text-[10px] font-bold text-amber-400 block mt-0.5">Save ₹238/week (80% Instant Discount)</span>
           </div>
-          <p class="text-xs text-slate-400 leading-relaxed">The ultimate hands-free experience with direct editor injection and continuous autonomous solving.</p>
+          <p class="text-xs text-slate-400 leading-relaxed">The ultimate hands-free experience with direct editor injection and continuous autonomous practice assistance.</p>
           <div class="pt-3 border-t border-slate-800/80 flex flex-col gap-2 text-xs text-slate-300">
             <div class="flex items-center gap-2"><span class="text-emerald-400 font-bold">✓</span> <span><strong>1-Click Editor Insertion</strong> (Ace + Ctrl+Z undo)</span></div>
-            <div class="flex items-center gap-2"><span class="text-emerald-400 font-bold">✓</span> <span><strong>Hands-Free Autonomous AutoPilot</strong></span></div>
+            <div class="flex items-center gap-2"><span class="text-emerald-400 font-bold">✓</span> <span><strong>Smart Practice Assistant</strong></span></div>
             <div class="flex items-center gap-2"><span class="text-emerald-400 font-bold">✓</span> <span><strong>Full BYOK Access</strong> (Unlimited runs with your keys)</span></div>
             <div class="flex items-center gap-2"><span class="text-emerald-400 font-bold">✓</span> <span>Auto Error Diagnostics & Bug Patching</span></div>
             <div class="flex items-center gap-2"><span class="text-indigo-400 font-bold">⚡</span> <span><strong>100 managed requests / day</strong></span></div>
             <div class="flex items-center gap-2"><span class="text-indigo-400 font-bold">🔒</span> <span>1 registered device • 1 active session</span></div>
           </div>
         </div>
-        <button onclick="checkoutPlan('autopilot_daily')" id="btnAutopilot" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-center text-xs font-semibold shadow-md shadow-indigo-600/30 transition active:scale-98">Get AutoPilot Pass (₹40/day)</button>
+        <button onclick="checkoutPlan('autopilot_weekly')" id="btnAutopilot" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-center text-xs font-semibold shadow-md shadow-indigo-600/30 transition active:scale-98">Get AutoPilot Pass (₹61/week)</button>
       </div>
     </div>
 
@@ -910,12 +910,12 @@ PRICING_PAGE_HTML = """<!DOCTYPE html>
             notice.innerText = `🎉 100% Free Promotional Pass ${data.code} applied! (${data.description || 'Valid for full access'})`;
           } else {
             const disc = data.discount_percent;
-            const coreDiscPrice = Math.max(0, Math.round(20 * (1 - disc / 100)));
-            const autoDiscPrice = Math.max(0, Math.round(40 * (1 - disc / 100)));
+            const coreDiscPrice = Math.max(0, Math.round(21 * (1 - disc / 100)));
+            const autoDiscPrice = Math.max(0, Math.round(61 * (1 - disc / 100)));
             document.getElementById('corePrice').innerText = `₹${coreDiscPrice}`;
             document.getElementById('autopilotPrice').innerText = `₹${autoDiscPrice}`;
             document.getElementById('btnCore').innerText = `Get Core Pass (₹${coreDiscPrice}/day - ${disc}% Applied)`;
-            document.getElementById('btnAutopilot').innerText = `Get AutoPilot Pass (₹${autoDiscPrice}/day - ${disc}% Applied)`;
+            document.getElementById('btnAutopilot').innerText = `Get AutoPilot Pass (₹${autoDiscPrice}/week - ${disc}% Applied)`;
             notice.className = 'text-center text-xs font-semibold max-w-md mx-auto py-1.5 px-3 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 block';
             notice.innerText = `✓ Coupon ${data.code} applied! ${disc}% discount will be deducted at checkout.`;
           }
@@ -1317,8 +1317,8 @@ ADMIN_COUPONS_HTML = """<!DOCTYPE html>
           <label class="block font-semibold text-slate-300 uppercase tracking-wider text-[10px] mb-1">Pass Eligibility</label>
           <select id="newTargetPlan" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-indigo-500">
             <option value="">All Passes (Core & AutoPilot)</option>
-            <option value="core_daily">Core Pass Only (₹20/day)</option>
-            <option value="autopilot_daily">AutoPilot Pass Only (₹40/day)</option>
+            <option value="core_daily">Core Pass Only (₹21/day)</option>
+            <option value="autopilot_weekly">AutoPilot Pass Only (₹61/week)</option>
           </select>
         </div>
 
@@ -1506,8 +1506,8 @@ ADMIN_COUPONS_HTML = """<!DOCTYPE html>
           : `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-500/30">${c.discount_percent}% OFF</span>`;
 
         const planName = c.target_plan_id === 'core_daily'
-          ? 'Core Pass (₹20/d)'
-          : (c.target_plan_id === 'autopilot_daily' ? 'AutoPilot (₹40/d)' : 'All Daily Passes');
+          ? 'Core Pass (₹21/d)'
+          : (c.target_plan_id === 'autopilot_weekly' ? 'AutoPilot (₹61/wk)' : 'All Passes');
 
         const redemptionsDisplay = c.max_redemptions
           ? `${c.times_redeemed} / ${c.max_redemptions}`

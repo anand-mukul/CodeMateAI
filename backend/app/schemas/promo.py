@@ -29,7 +29,7 @@ class ValidatePromoResponse(BaseModel):
 
 class RedeemPromoRequest(BaseModel):
     code: str = Field(min_length=2, max_length=32)
-    plan_id: Optional[str] = "autopilot_daily"
+    plan_id: Optional[str] = "autopilot_weekly"
 
 
 class RedeemPromoResponse(BaseModel):
@@ -42,7 +42,7 @@ class RedeemPromoResponse(BaseModel):
 
 class AdminGrantSubscriptionRequest(BaseModel):
     target_email: str
-    plan_id: str = "autopilot_daily"
+    plan_id: str = "autopilot_weekly"
     duration_days: int = Field(default=30, ge=1, le=365)
     reason: str = Field(default="Promotional Ambassador Grant", max_length=255)
 

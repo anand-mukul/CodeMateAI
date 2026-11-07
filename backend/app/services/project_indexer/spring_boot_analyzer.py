@@ -6,7 +6,7 @@ maps REST endpoints, checks JPA relationships, and detects architectural anti-pa
 
 import json
 import re
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 
 class SpringBootAnalyzer:
