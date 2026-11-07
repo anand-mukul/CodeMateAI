@@ -25,7 +25,7 @@ class UserDevice(Base):
     browser_name: Mapped[str] = mapped_column(String(50), nullable=False, default="Chrome")
     browser_version: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     extension_version: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    device_status: Mapped[str] = mapped_column(SQLEnum(DeviceStatus, native_enum=False, length=20, values_callable=lambda x: [e.value for e in x]), default=DeviceStatus.ACTIVE.value, nullable=False)
+    device_status: Mapped[str] = mapped_column(SQLEnum(DeviceStatus, name="device_status_enum", values_callable=lambda x: [e.value for e in x]), default=DeviceStatus.ACTIVE.value, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)

@@ -21,6 +21,14 @@ from app.models.device import UserDevice
 from app.models.session import UserSession
 from app.models.subscription import Plan, Subscription
 from app.models.security_log import SecurityLog
+from app.models.enums import (
+    SessionStatus,
+    SubscriptionStatus,
+    UserRole,
+    PlanTier,
+    AccountStatus,
+    DeviceStatus,
+)
 from app.schemas.auth import ActiveSessionSummary
 
 
@@ -28,14 +36,20 @@ class SessionService:
     @classmethod
     async def get_user_plan_session_limit(cls, db: AsyncSession, user_id: str) -> int:
         """Determines the concurrent active session limit based on the user's active plan."""
+        # Platform administrators get unlimited concurrent sessions
+        user_res = await db.execute(select(User).where(User.id == user_id))
+        user = user_res.scalars().first()
+        if user and (user.role or "").upper() in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value):
+            return 999
+
         sub_query = select(Subscription).where(
-            and_(Subscription.user_id == user_id, Subscription.status == "active")
+            and_(Subscription.user_id == user_id, Subscription.status == SubscriptionStatus.ACTIVE.value)
         ).order_by(Subscription.created_at.desc())
         sub_res = await db.execute(sub_query)
         sub = sub_res.scalars().first()
 
-        plan_id = sub.plan_id if sub else "free"
-        plan_query = select(Plan).where(Plan.id == plan_id)
+        plan_id = sub.plan_id if sub else PlanTier.FREE.value
+        plan_query = select(Plan).where((Plan.id == plan_id) | (Plan.id == plan_id.upper()) | (Plan.id == plan_id.lower()))
         plan_res = await db.execute(plan_query)
         plan = plan_res.scalars().first()
 
@@ -64,7 +78,7 @@ class SessionService:
         active_sessions_query = select(UserSession).where(
             and_(
                 UserSession.user_id == user.id,
-                UserSession.session_status == "active",
+                UserSession.session_status == SessionStatus.ACTIVE.value,
                 UserSession.expires_at > now,
             )
         )
@@ -93,12 +107,12 @@ class SessionService:
             sorted_sessions = sorted(same_scope_sessions, key=lambda s: s.last_seen_at or s.created_at)
             sessions_to_revoke = sorted_sessions[: len(same_scope_sessions) - allowed_limit + 1]
             for old_s in sessions_to_revoke:
-                old_s.session_status = "revoked"
+                old_s.session_status = SessionStatus.REVOKED.value
                 old_s.revoked_at = now
 
         # If previous session on this device existed, revoke it
         if existing_device_session:
-            existing_device_session.session_status = "revoked"
+            existing_device_session.session_status = SessionStatus.REVOKED.value
             existing_device_session.revoked_at = now
 
         # Generate tokens
@@ -110,7 +124,7 @@ class SessionService:
             user_id=user.id,
             device_id=device_id,
             refresh_token_hash=refresh_token_hash,
-            session_status="active",
+            session_status=SessionStatus.ACTIVE.value,
             ip_address_hash=ip_hash,
             user_agent=user_agent[:255] if user_agent else None,
             created_at=now,
@@ -161,7 +175,7 @@ class SessionService:
         user_res = await db.execute(user_query)
         user = user_res.scalars().first()
 
-        if not user or user.account_status != "active":
+        if not user or (user.account_status or "").upper() != AccountStatus.ACTIVE.value:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User account is suspended or disabled.",
@@ -169,14 +183,14 @@ class SessionService:
 
         # REUSE DETECTION: If session was revoked or expired, revoke ALL active sessions
         sess_expires = ensure_utc(session.expires_at) or now
-        if session.session_status != "active" or sess_expires <= now:
+        if (session.session_status or "").upper() != SessionStatus.ACTIVE.value or sess_expires <= now:
             # Compromise detected! Invalidate all sessions for this user immediately
             revoke_all_q = select(UserSession).where(
-                and_(UserSession.user_id == user.id, UserSession.session_status == "active")
+                and_(UserSession.user_id == user.id, UserSession.session_status == SessionStatus.ACTIVE.value)
             )
             active_res = await db.execute(revoke_all_q)
             for s in active_res.scalars().all():
-                s.session_status = "revoked"
+                s.session_status = SessionStatus.REVOKED.value
                 s.revoked_at = now
 
             log_entry = SecurityLog(
@@ -201,8 +215,8 @@ class SessionService:
         )
         dev_res = await db.execute(dev_query)
         dev = dev_res.scalars().first()
-        if dev and dev.device_status == "revoked":
-            session.session_status = "revoked"
+        if dev and (dev.device_status or "").upper() == DeviceStatus.REVOKED.value:
+            session.session_status = SessionStatus.REVOKED.value
             session.revoked_at = now
             await db.commit()
             raise HTTPException(
@@ -211,7 +225,7 @@ class SessionService:
             )
 
         # Mark old session rotated (revoked)
-        session.session_status = "revoked"
+        session.session_status = SessionStatus.REVOKED.value
         session.revoked_at = now
 
         # Create new rotated session
@@ -221,7 +235,7 @@ class SessionService:
             user_id=user.id,
             device_id=session.device_id,
             refresh_token_hash=new_hash,
-            session_status="active",
+            session_status=SessionStatus.ACTIVE.value,
             ip_address_hash=ip_hash,
             user_agent=session.user_agent,
             created_at=now,
@@ -246,7 +260,7 @@ class SessionService:
         query = select(UserSession).where(
             and_(
                 UserSession.user_id == user_id,
-                UserSession.session_status == "active",
+                UserSession.session_status == SessionStatus.ACTIVE.value,
                 UserSession.expires_at > now,
             )
         ).order_by(UserSession.last_seen_at.desc())
@@ -285,7 +299,7 @@ class SessionService:
         if not session:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
 
-        session.session_status = "revoked"
+        session.session_status = SessionStatus.REVOKED.value
         session.revoked_at = utc_now()
         await db.commit()
 
@@ -296,7 +310,7 @@ class SessionService:
         """Terminates all active sessions for the user (except current if specified)."""
         now = utc_now()
         query = select(UserSession).where(
-            and_(UserSession.user_id == user_id, UserSession.session_status == "active")
+            and_(UserSession.user_id == user_id, UserSession.session_status == SessionStatus.ACTIVE.value)
         )
         if except_session_id:
             query = query.where(UserSession.id != except_session_id)
@@ -304,7 +318,7 @@ class SessionService:
         result = await db.execute(query)
         sessions = result.scalars().all()
         for s in sessions:
-            s.session_status = "revoked"
+            s.session_status = SessionStatus.REVOKED.value
             s.revoked_at = now
 
         await db.commit()
@@ -317,11 +331,11 @@ class SessionService:
         query = select(UserSession).where(
             and_(
                 UserSession.user_id == user_id,
-                UserSession.session_status == "active",
+                UserSession.session_status == SessionStatus.ACTIVE.value,
                 UserSession.expires_at <= now,
             )
         )
         result = await db.execute(query)
         for s in result.scalars().all():
-            s.session_status = "expired"
+            s.session_status = SessionStatus.EXPIRED.value
         await db.commit()

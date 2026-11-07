@@ -12,6 +12,7 @@ from app.db.base import utc_now
 from app.models.analytics import AnalyticsDailyAggregate, AnalyticsEvent
 from app.models.project import Project, ProjectPatch
 from app.models.subscription import Plan, Subscription
+from app.models.enums import SubscriptionStatus
 from app.models.user import User
 
 
@@ -42,13 +43,13 @@ class AnalyticsQueries:
         mau = (await db.execute(mau_q)).scalar_one() or 0
 
         # 3. Plan Distribution
-        free_q = select(func.count(Subscription.id)).where(Subscription.plan_id == "free", Subscription.status == "active")
+        free_q = select(func.count(Subscription.id)).where(Subscription.plan_id.in_(["FREE", "free"]), Subscription.status == SubscriptionStatus.ACTIVE.value)
         free_count = (await db.execute(free_q)).scalar_one() or 0
 
-        pro_q = select(func.count(Subscription.id)).where(Subscription.plan_id == "pro", Subscription.status == "active")
+        pro_q = select(func.count(Subscription.id)).where(Subscription.plan_id.in_(["PLAN_CORE_PASS", "core_daily"]), Subscription.status == SubscriptionStatus.ACTIVE.value)
         pro_count = (await db.execute(pro_q)).scalar_one() or 0
 
-        prem_q = select(func.count(Subscription.id)).where(Subscription.plan_id == "premium", Subscription.status == "active")
+        prem_q = select(func.count(Subscription.id)).where(Subscription.plan_id.in_(["PLAN_AUTOPILOT_PASS", "autopilot_weekly"]), Subscription.status == SubscriptionStatus.ACTIVE.value)
         prem_count = (await db.execute(prem_q)).scalar_one() or 0
 
         # 4. Total AI Requests & Tokens

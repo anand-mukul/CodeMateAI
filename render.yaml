@@ -1,14 +1,19 @@
 # ==============================================================================
-# CodeMate AI — Render Deployment Blueprint (render.yaml)
-# Production Web Service connected to external Neon Serverless PostgreSQL
+# CodeMate AI — Render Multi-Service Production Blueprint (render.yaml)
+# Full 3-Tier Production Architecture:
+# 1. codemate-backend (FastAPI REST service connected to Neon Serverless PostgreSQL)
+# 2. codemate-frontend (Next.js 16 App Router SaaS platform with proxy.ts & shadcn)
 # Docs: https://render.com/docs/blueprint-spec
 # ==============================================================================
 
 services:
+  # ----------------------------------------------------------------------------
+  # Backend API Service (FastAPI)
+  # ----------------------------------------------------------------------------
   - type: web
     name: codemate-backend
     runtime: python
-    region: singapore # Closest to India and your Neon DB region (ap-southeast-1)
+    region: singapore # ap-southeast-1 region
     plan: free
     rootDir: backend
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt && pip install asyncpg
@@ -22,8 +27,10 @@ services:
         value: production
       - key: LOG_LEVEL
         value: INFO
+      - key: FRONTEND_URL
+        value: https://codemate-frontend.onrender.com
       - key: ALLOWED_ORIGINS
-        value: https://codemateai.com,https://app.codemateai.com,chrome-extension://*
+        value: https://codemateai.com,https://app.codemateai.com,https://codemate-frontend.onrender.com,http://localhost:3000,chrome-extension://*
       
       # External Neon PostgreSQL Database Connection URL
       - key: DATABASE_URL
@@ -43,7 +50,7 @@ services:
       - key: AI_PROVIDER
         value: gemini
       - key: GEMINI_MODEL
-        value: gemini-3.5-flash
+        value: gemini-2.5-flash
       - key: GEMINI_API_KEY
         sync: false
       - key: OPENROUTER_MODEL
@@ -72,3 +79,23 @@ services:
         sync: false
       - key: SMTP_FROM_EMAIL
         value: onboarding@resend.dev
+
+  # ----------------------------------------------------------------------------
+  # Frontend Web Platform (Next.js 16 + Tailwind CSS 4 + Shadcn)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: codemate-frontend
+    runtime: node
+    region: singapore
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: NEXT_PUBLIC_API_URL
+        value: https://codemate-backend-wsi1.onrender.com
+      - key: BACKEND_URL
+        value: https://codemate-backend-wsi1.onrender.com

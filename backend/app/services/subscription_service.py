@@ -13,6 +13,7 @@ from fastapi import HTTPException, status
 from app.db.base import utc_now, ensure_utc
 from app.models.user import User
 from app.models.subscription import Plan, Subscription, UsageRecord
+from app.models.enums import BillingInterval, SubscriptionStatus, PlanTier, UserRole
 from app.schemas.payment import PlanResponse, SubscriptionResponse
 
 
@@ -25,11 +26,53 @@ class SubscriptionService:
         return list(result.scalars().all())
 
     @classmethod
+    def _create_admin_plan(cls) -> Plan:
+        all_features = [
+            "analyze", "explain", "generate", "optimize", "fix",
+            "autopilot", "one_click_insert", "byok", "project_intelligence", "admin"
+        ]
+        return Plan(
+            id="ENTERPRISE_ADMIN",
+            name="Enterprise Super Admin",
+            description="Unlimited platform administration & full AI engine access",
+            price=0,
+            currency="INR",
+            billing_interval="unlimited",
+            device_limit=999,
+            concurrent_session_limit=999,
+            ai_usage_limit=999999,
+            feature_entitlements=json.dumps(all_features),
+            active=True,
+        )
+
+    @classmethod
     async def get_plan_by_id(cls, db: AsyncSession, plan_id: str) -> Optional[Plan]:
-        """Retrieves a specific plan by identifier."""
-        query = select(Plan).where(Plan.id == plan_id)
+        """Retrieves a specific plan by identifier, normalizing PLAN_CORE_PASS and PLAN_AUTOPILOT_PASS."""
+        if plan_id == "ENTERPRISE_ADMIN":
+            return cls._create_admin_plan()
+
+        query = select(Plan).where((Plan.id == plan_id) | (Plan.id == plan_id.upper()) | (Plan.id == plan_id.lower()))
         result = await db.execute(query)
-        return result.scalars().first()
+        plan = result.scalars().first()
+        if plan:
+            return plan
+
+        aliases = {
+            "FREE": "free",
+            "free": "FREE",
+            "PLAN_CORE_PASS": "core_daily",
+            "core_daily": "PLAN_CORE_PASS",
+            "PLAN_AUTOPILOT_PASS": "autopilot_weekly",
+            "autopilot_weekly": "PLAN_AUTOPILOT_PASS",
+            "plan_daily_21": "PLAN_CORE_PASS",
+            "plan_weekly_61": "PLAN_AUTOPILOT_PASS",
+        }
+        alt_id = aliases.get(plan_id)
+        if alt_id:
+            query = select(Plan).where((Plan.id == alt_id) | (Plan.id == alt_id.upper()) | (Plan.id == alt_id.lower()))
+            result = await db.execute(query)
+            return result.scalars().first()
+        return None
 
     @classmethod
     async def get_active_subscription(cls, db: AsyncSession, user_id: str) -> Optional[Subscription]:
@@ -43,10 +86,33 @@ class SubscriptionService:
     ) -> Tuple[Subscription, Plan]:
         """
         Retrieves the user's active subscription.
+        - Platform administrators (SUPER_ADMIN, ADMIN) automatically receive an Enterprise Admin plan.
         - If subscription period ended, transitions it to expired and initializes a Free subscription.
         - If no subscription exists, creates a default lifetime/free subscription.
         """
         now = utc_now()
+
+        # Check if user is a platform administrator (super_admin or admin)
+        user_res = await db.execute(select(User).where(User.id == user_id))
+        user = user_res.scalars().first()
+        if user and (user.role or "").upper() in (
+            UserRole.SUPER_ADMIN.value,
+            UserRole.ADMIN.value,
+            UserRole.SUPPORT_AGENT.value,
+            UserRole.ANALYST.value,
+        ):
+            admin_plan = cls._create_admin_plan()
+            admin_sub = Subscription(
+                id="admin_enterprise_sub",
+                user_id=user_id,
+                plan_id=admin_plan.id,
+                billing_provider="internal",
+                status=SubscriptionStatus.ACTIVE.value,
+                current_period_start=now,
+                current_period_end=now + timedelta(days=36500),
+                cancel_at_period_end=False,
+            )
+            return admin_sub, admin_plan
 
         # Query latest subscription
         query = (
@@ -57,19 +123,21 @@ class SubscriptionService:
         result = await db.execute(query)
         sub = result.scalars().first()
 
-        if sub and sub.status == "active":
+        if sub and (sub.status or "").upper() == SubscriptionStatus.ACTIVE.value:
             # Check period expiration for paid plans
             period_end = ensure_utc(sub.current_period_end)
-            if sub.plan_id != "free" and period_end and period_end <= now:
-                sub.status = "expired"
+            if (sub.plan_id or "").upper() not in ("FREE", "FREE_TIER") and period_end and period_end <= now:
+                sub.status = SubscriptionStatus.EXPIRED.value
                 await db.commit()
                 await db.refresh(sub)
                 # Expired: proceed to create/return fallback Free plan
                 sub = None
 
-        if not sub or sub.status != "active":
+        if not sub or (sub.status or "").upper() != SubscriptionStatus.ACTIVE.value:
             # Provision free subscription
-            free_plan = await cls.get_plan_by_id(db, "free")
+            free_plan = await cls.get_plan_by_id(db, PlanTier.FREE.value)
+            if not free_plan:
+                free_plan = await cls.get_plan_by_id(db, "free")
             if not free_plan:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -80,9 +148,9 @@ class SubscriptionService:
             period_end = now + timedelta(days=3650)
             sub = Subscription(
                 user_id=user_id,
-                plan_id="free",
+                plan_id=free_plan.id,
                 billing_provider="system",
-                status="active",
+                status=SubscriptionStatus.ACTIVE.value,
                 current_period_start=now,
                 current_period_end=period_end,
                 cancel_at_period_end=False,
@@ -94,7 +162,7 @@ class SubscriptionService:
         # Load associated plan
         plan = await cls.get_plan_by_id(db, sub.plan_id)
         if not plan:
-            plan = await cls.get_plan_by_id(db, "free")
+            plan = await cls.get_plan_by_id(db, PlanTier.FREE.value) or await cls.get_plan_by_id(db, "free")
 
         return sub, plan
 
@@ -117,16 +185,17 @@ class SubscriptionService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid or inactive plan '{plan_id}'.")
 
         # Determine duration: 1 day for daily plans, 7 days for weekly plans, else duration_days
-        if plan.billing_interval == "day":
+        interval = (plan.billing_interval or "").upper()
+        if interval in ("DAY", "DAILY"):
             calc_days = 1
-        elif plan.billing_interval == "week":
+        elif interval in ("WEEK", "WEEKLY"):
             calc_days = 7
         else:
             calc_days = duration_days
 
         # Deactivate previous active subscriptions while preserving unexpired renewal time
         old_subs_q = select(Subscription).where(
-            and_(Subscription.user_id == user_id, Subscription.status == "active")
+            and_(Subscription.user_id == user_id, Subscription.status == SubscriptionStatus.ACTIVE.value)
         )
         old_subs_res = await db.execute(old_subs_q)
         active_same = None
@@ -142,7 +211,7 @@ class SubscriptionService:
             plan_id=plan_id,
             billing_provider=provider,
             provider_subscription_id=provider_sub_id,
-            status="active",
+            status=SubscriptionStatus.ACTIVE.value,
             current_period_start=now,
             current_period_end=period_end,
             cancel_at_period_end=False,
@@ -156,7 +225,7 @@ class SubscriptionService:
     async def cancel_subscription(cls, db: AsyncSession, user_id: str) -> Subscription:
         """Sets an active subscription to cancel at period end."""
         sub, plan = await cls.get_or_create_user_subscription(db, user_id)
-        if sub.plan_id == "free":
+        if (sub.plan_id or "").upper() in ("FREE", "FREE_TIER"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot cancel Free tier.")
 
         sub.cancel_at_period_end = True
@@ -181,6 +250,42 @@ class SubscriptionService:
         sub, plan = await cls.get_or_create_user_subscription(db, user_id)
         entitlements = json.loads(plan.feature_entitlements) if plan.feature_entitlements else []
         usage_today = await cls.get_usage_today(db, user_id)
+
+        user_res = await db.execute(select(User).where(User.id == user_id))
+        user = user_res.scalars().first()
+        if user and (user.role or "").upper() in (
+            UserRole.SUPER_ADMIN.value,
+            UserRole.ADMIN.value,
+            UserRole.SUPPORT_AGENT.value,
+            UserRole.ANALYST.value,
+        ):
+            return SubscriptionResponse(
+                id=sub.id,
+                plan_id=PlanTier.PLAN_AUTOPILOT_PASS.value,
+                plan_name="Admin AutoPilot Pass",
+                billing_provider="internal",
+                status=SubscriptionStatus.ACTIVE.value,
+                current_period_start=sub.current_period_start,
+                current_period_end=sub.current_period_end,
+                cancel_at_period_end=False,
+                device_limit=999,
+                concurrent_session_limit=999,
+                ai_usage_limit=999999,
+                usage_today=usage_today,
+                remaining_quota_today=999999,
+                entitlements=[
+                    "analyze",
+                    "explain",
+                    "generate",
+                    "optimize",
+                    "fix",
+                    "one_click_insert",
+                    "byok",
+                    "fast_model",
+                    "autopilot",
+                ],
+            )
+
         remaining = max(0, plan.ai_usage_limit - usage_today)
 
         return SubscriptionResponse(

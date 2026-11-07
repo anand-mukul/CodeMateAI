@@ -5,8 +5,11 @@ Orchestrates problem comprehension, constraint evaluation, and pedagogical expla
 
 from pathlib import Path
 from typing import Optional
+from fastapi import HTTPException, status
 from app.ai.provider import AIProvider
 from app.ai.provider_manager import ProviderManager
+from app.ai.openrouter_provider import OpenRouterProvider
+from app.core.config import settings
 from app.core.security import sanitize_untrusted_text
 from app.schemas.problem import ProblemRequest
 from app.schemas.analysis import ProblemAnalysis, ProblemExplanation
@@ -93,11 +96,9 @@ class ProblemAnalyzerService:
                 except Exception as op_err:
                     logger.warning(f"OpenRouter analysis fallback failed: {op_err}")
 
-            from app.ai.mock_provider import MockAIProvider
-            return await MockAIProvider().generate_structured(
-                prompt=user_prompt,
-                response_schema=ProblemAnalysis,
-                system_prompt=system_prompt,
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="All configured AI providers failed to analyze the problem. Please verify network and API key status."
             )
 
     @classmethod
@@ -150,10 +151,8 @@ class ProblemAnalyzerService:
                 except Exception as op_err:
                     logger.warning(f"OpenRouter explanation fallback failed: {op_err}")
 
-            from app.ai.mock_provider import MockAIProvider
-            return await MockAIProvider().generate_structured(
-                prompt=user_prompt,
-                response_schema=ProblemExplanation,
-                system_prompt=system_prompt,
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="All configured AI providers failed to generate an explanation. Please verify network and API key status."
             )
 

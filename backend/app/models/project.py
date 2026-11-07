@@ -5,10 +5,11 @@ Models representing imported projects, files, symbols, dependency graph edges, p
 
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, generate_uuid, utc_now
+from app.models.enums import ProjectIndexStatus, PatchStatus, RepairWorkflowStatus
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -111,7 +112,7 @@ class ProjectIndexJob(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    status: Mapped[str] = mapped_column(String(30), default="queued", nullable=False)  # queued, indexing, completed, failed, cancelled
+    status: Mapped[str] = mapped_column(SQLEnum(ProjectIndexStatus, name="project_index_status_enum", values_callable=lambda x: [e.value for e in x]), default=ProjectIndexStatus.QUEUED.value, nullable=False)
     total_files: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     indexed_files: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -125,7 +126,7 @@ class ProjectPatch(Base, TimestampMixin):
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     task_description: Mapped[str] = mapped_column(String(500), nullable=False)
-    status: Mapped[str] = mapped_column(String(30), default="proposed", nullable=False)  # proposed, approved, applied, rejected, rolled_back
+    status: Mapped[str] = mapped_column(SQLEnum(PatchStatus, name="patch_status_enum", values_callable=lambda x: [e.value for e in x]), default=PatchStatus.PROPOSED.value, nullable=False)
     patch_summary: Mapped[str] = mapped_column(Text, nullable=False)
     rollback_data_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -159,7 +160,7 @@ class ProjectWorkflow(Base, TimestampMixin):
     workflow_type: Mapped[str] = mapped_column(String(50), default="analyze_plan_fix", nullable=False)
     current_stage: Mapped[str] = mapped_column(String(50), default="DISCOVERING", nullable=False)
     stage_progress: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    status: Mapped[str] = mapped_column(String(30), default="active", nullable=False)  # active, paused, completed, failed, cancelled
+    status: Mapped[str] = mapped_column(SQLEnum(RepairWorkflowStatus, name="repair_workflow_status_enum", values_callable=lambda x: [e.value for e in x]), default=RepairWorkflowStatus.ACTIVE.value, nullable=False)
     task_input: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     log_events_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 

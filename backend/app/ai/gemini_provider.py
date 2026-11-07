@@ -34,9 +34,7 @@ class GeminiProvider(AIProvider):
     # Class-level state to track permanently deprecated (404) and rate-limited (429) models
     _permanently_unavailable: Set[str] = {
         "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
+        "gemini-3.5-flash",
     }
     _model_cooldowns: Dict[str, float] = {}
 
@@ -47,13 +45,13 @@ class GeminiProvider(AIProvider):
         base_url: Optional[str] = None,
     ):
         self._api_key = api_key or settings.GEMINI_API_KEY or settings.AI_API_KEY
-        self._model_name = model_name or settings.GEMINI_MODEL or settings.AI_MODEL or "gemini-3.5-flash"
+        self._model_name = model_name or settings.GEMINI_MODEL or settings.AI_MODEL or "gemini-3.8-flash"
         self._fallback_models = [
-            "gemini-3.5-flash",
-            "gemini-3.5-flash-lite",
-            "gemini-3.6-flash",
-            "gemini-3.1-flash-lite",
             "gemini-3.8-flash",
+            "gemini-3-flash-preview",
+            "gemini-flash-latest",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-pro",
         ]
         self._base_url = (
             base_url

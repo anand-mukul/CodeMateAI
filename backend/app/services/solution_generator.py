@@ -6,8 +6,11 @@ Produces complete, executable, competitive programming solutions and refactors e
 import re
 from pathlib import Path
 from typing import Optional
+from fastapi import HTTPException, status
 from app.ai.provider import AIProvider
 from app.ai.provider_manager import ProviderManager
+from app.ai.openrouter_provider import OpenRouterProvider
+from app.core.config import settings
 from app.core.security import sanitize_untrusted_text
 from app.schemas.problem import ProblemRequest
 from app.schemas.solution import (
@@ -16,7 +19,11 @@ from app.schemas.solution import (
     OptimizationResponse,
     SolutionFixRequest,
     SolutionFixResponse,
+    ComplexityAnalysis,
+    ComplexityItem,
+    WorkspaceFile,
 )
+from app.services.project_indexer.language_detector import LanguageDetector
 from app.services.complexity_analyzer import ComplexityAnalyzer
 from app.services.response_validator import ResponseValidator
 from app.services.constraint_analyzer import ConstraintAnalyzer
@@ -50,12 +57,6 @@ class SolutionGeneratorService:
         # Check if multi-file project with 2 or more files
         if problem.workspace_files and len(problem.workspace_files) > 1:
             try:
-                from app.ai.mock_provider import MockAIProvider
-                if isinstance(provider, MockAIProvider) or provider.provider_name == "mock":
-                    return await provider.generate_structured(
-                        prompt=f"Multi-file Spring Boot project {problem.title}",
-                        response_schema=SolutionResponse,
-                    )
                 return await cls.generate_multifile_solution(problem, provider=provider)
             except Exception as mf_err:
                 logger.warning(f"Sequential multi-file pipeline warning: {mf_err}. Falling back to standard pipeline...")
@@ -153,22 +154,19 @@ class SolutionGeneratorService:
                 try:
                     logger.info("Engaging OpenRouter secondary fallback...")
                     from app.ai.openrouter_provider import OpenRouterProvider
-                    op = OpenRouterProvider(model_name=settings.OPENROUTER_MODEL or "meta-llama/llama-3.3-70b-instruct")
+                    op = OpenRouterProvider(model_name=settings.OPENROUTER_MODEL or "openrouter/free")
                     solution = await op.generate_structured(
                         prompt=user_prompt,
                         response_schema=SolutionResponse,
                         system_prompt=system_prompt,
                     )
                 except Exception as op_err:
-                    logger.warning(f"OpenRouter fallback also failed ({op_err}). Using mock provider...")
+                    logger.warning(f"OpenRouter fallback also failed ({op_err}).")
 
         if solution is None:
-            from app.ai.mock_provider import MockAIProvider
-            fallback_provider = MockAIProvider()
-            solution = await fallback_provider.generate_structured(
-                prompt=user_prompt,
-                response_schema=SolutionResponse,
-                system_prompt=system_prompt,
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="All configured AI models failed to generate a solution. Please verify AI provider configuration or retry."
             )
 
         # Normalize and validate Big-O complexity

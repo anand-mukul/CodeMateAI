@@ -23,6 +23,7 @@ from app.api.routes import (
     feature_requests,
     support,
     feature_flags,
+    tasks,
 )
 
 api_router = APIRouter(prefix="/api")
@@ -41,6 +42,7 @@ api_router.include_router(payments.router)
 
 # Phase 7: Multi-File Project Intelligence & Spring Boot Agent
 api_router.include_router(projects.router)
+api_router.include_router(tasks.router)
 
 # Phase 8: Analytics, Admin Governance, Feedback, Feature Requests & Support
 api_router.include_router(analytics.router)

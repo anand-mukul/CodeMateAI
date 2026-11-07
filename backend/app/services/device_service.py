@@ -12,6 +12,7 @@ from fastapi import HTTPException, status
 from app.models.user import User
 from app.models.device import UserDevice
 from app.models.subscription import Plan, Subscription
+from app.models.enums import DeviceStatus, SubscriptionStatus, UserRole, PlanTier
 from app.schemas.auth import DeviceRegisterRequest, DeviceResponse, DeviceLimitReachedResponse
 from app.db.base import utc_now
 
@@ -20,15 +21,21 @@ class DeviceService:
     @classmethod
     async def get_user_plan_device_limit(cls, db: AsyncSession, user_id: str) -> int:
         """Retrieves the effective device limit based on the user's active subscription."""
+        # Platform administrators get unlimited device registrations
+        user_res = await db.execute(select(User).where(User.id == user_id))
+        user = user_res.scalars().first()
+        if user and (user.role or "").upper() in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value):
+            return 999
+
         # Find active subscription
         sub_query = select(Subscription).where(
-            and_(Subscription.user_id == user_id, Subscription.status == "active")
+            and_(Subscription.user_id == user_id, Subscription.status == SubscriptionStatus.ACTIVE.value)
         ).order_by(Subscription.created_at.desc())
         sub_res = await db.execute(sub_query)
         sub = sub_res.scalars().first()
 
-        plan_id = sub.plan_id if sub else "free"
-        plan_query = select(Plan).where(Plan.id == plan_id)
+        plan_id = sub.plan_id if sub else PlanTier.FREE.value
+        plan_query = select(Plan).where((Plan.id == plan_id) | (Plan.id == plan_id.upper()) | (Plan.id == plan_id.lower()))
         plan_res = await db.execute(plan_query)
         plan = plan_res.scalars().first()
 
@@ -56,7 +63,7 @@ class DeviceService:
 
         if existing_device:
             # Re-activate if revoked, or update metadata
-            existing_device.device_status = "active"
+            existing_device.device_status = DeviceStatus.ACTIVE.value
             existing_device.revoked_at = None
             existing_device.last_seen_at = utc_now()
             if data.device_name:
@@ -80,7 +87,7 @@ class DeviceService:
         )
 
         active_devices_query = select(UserDevice).where(
-            and_(UserDevice.user_id == user.id, UserDevice.device_status == "active")
+            and_(UserDevice.user_id == user.id, UserDevice.device_status == DeviceStatus.ACTIVE.value)
         )
         active_devices_res = await db.execute(active_devices_query)
         all_active_devices = active_devices_res.scalars().all()
@@ -102,7 +109,7 @@ class DeviceService:
             sorted_devices = sorted(extension_devices, key=lambda d: d.last_seen_at or d.created_at)
             devices_to_revoke = sorted_devices[: len(extension_devices) - allowed_limit + 1]
             for old_dev in devices_to_revoke:
-                old_dev.device_status = "revoked"
+                old_dev.device_status = DeviceStatus.REVOKED.value
                 old_dev.revoked_at = utc_now()
 
         new_device = UserDevice(
@@ -112,7 +119,7 @@ class DeviceService:
             browser_name=data.browser_name,
             browser_version=data.browser_version,
             extension_version=data.extension_version,
-            device_status="active",
+            device_status=DeviceStatus.ACTIVE.value,
         )
         db.add(new_device)
         await db.commit()
@@ -155,7 +162,7 @@ class DeviceService:
         if not device:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found.")
 
-        device.device_status = "revoked"
+        device.device_status = DeviceStatus.REVOKED.value
         device.revoked_at = utc_now()
         await db.commit()
 

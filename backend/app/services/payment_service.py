@@ -18,6 +18,7 @@ from app.core.logging import logger
 from app.db.base import utc_now
 from app.models.user import User
 from app.models.subscription import Plan, Subscription, Payment, WebhookEvent
+from app.models.enums import PaymentStatus
 from app.schemas.payment import (
     CreateOrderResponse,
     PaymentHistoryItem,
@@ -25,6 +26,7 @@ from app.schemas.payment import (
     WebhookProcessingResult,
 )
 from app.services.subscription_service import SubscriptionService
+from app.services.promo_service import PromoService
 
 
 class PaymentService:
@@ -162,7 +164,7 @@ class PaymentService:
         # Mark payment captured
         now = utc_now()
         payment.provider_payment_id = razorpay_payment_id
-        payment.payment_status = "captured"
+        payment.payment_status = PaymentStatus.CAPTURED.value
         payment.verified_at = now
 
         # Activate subscription
@@ -255,7 +257,7 @@ class PaymentService:
             pay_res = await db.execute(pay_q)
             pay_rec = pay_res.scalars().first()
             if pay_rec:
-                pay_rec.payment_status = "captured"
+                pay_rec.payment_status = PaymentStatus.CAPTURED.value
                 pay_rec.provider_payment_id = payment_id
                 pay_rec.verified_at = now
                 notes = payload_entity.get("notes", {})

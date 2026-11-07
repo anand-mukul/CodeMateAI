@@ -5,10 +5,11 @@ Provides structured user feedback collection, public feature suggestions, and co
 
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, generate_uuid, utc_now
+from app.models.enums import FeedbackStatus, FeatureRequestStatus
 
 
 class UserFeedback(Base, TimestampMixin):
@@ -21,7 +22,7 @@ class UserFeedback(Base, TimestampMixin):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     satisfaction_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1 to 5
     attachment_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    status: Mapped[str] = mapped_column(String(30), default="new", nullable=False)  # new, review_in_progress, resolved, archived
+    status: Mapped[str] = mapped_column(SQLEnum(FeedbackStatus, name="feedback_status_enum", values_callable=lambda x: [e.value for e in x]), default=FeedbackStatus.NEW.value, nullable=False)  # NEW, REVIEW_IN_PROGRESS, RESOLVED, ARCHIVED
     admin_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
@@ -33,7 +34,7 @@ class FeatureRequest(Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False)  # ai_features, editor_integration, project_intelligence, spring_boot, ui_ux, performance, integrations, other
-    status: Mapped[str] = mapped_column(String(30), default="NEW", nullable=False, index=True)  # NEW, UNDER_REVIEW, PLANNED, IN_PROGRESS, COMPLETED, DECLINED, DUPLICATE, ON_HOLD
+    status: Mapped[str] = mapped_column(SQLEnum(FeatureRequestStatus, name="feature_request_status_enum", values_callable=lambda x: [e.value for e in x]), default=FeatureRequestStatus.NEW.value, nullable=False, index=True)
     vote_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     admin_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     merged_into_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)

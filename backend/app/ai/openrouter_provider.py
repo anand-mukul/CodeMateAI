@@ -28,7 +28,11 @@ class OpenRouterProvider(AIProvider):
         base_url: Optional[str] = None,
     ):
         self._api_key = api_key or settings.OPENROUTER_API_KEY or settings.AI_API_KEY
-        self._model_name = model_name or settings.OPENROUTER_MODEL or "openrouter/free"
+        raw_model = model_name or settings.OPENROUTER_MODEL or "openrouter/free"
+        # Remap discontinued or deprecated OpenRouter free slugs
+        if "llama-3.2-3b-instruct:free" in raw_model or "llama-3.2-1b-instruct:free" in raw_model:
+            raw_model = "openrouter/free"
+        self._model_name = raw_model
         self._base_url = (
             base_url
             or settings.OPENROUTER_BASE_URL
@@ -109,10 +113,12 @@ class OpenRouterProvider(AIProvider):
         system_prompt: Optional[str] = None,
     ) -> T:
         headers = self._get_headers()
+        field_keys = list(response_schema.model_fields.keys())
         schema_instruction = (
-            f"You MUST respond ONLY with a valid, pure JSON object strictly matching this schema:\n"
-            f"{response_schema.model_json_schema()}\n"
-            f"Do not include any surrounding markdown fences or explanation."
+            f"CRITICAL: You MUST respond ONLY with a concrete, valid JSON data object containing real solution content.\n"
+            f"DO NOT return a schema definition, $defs, or meta-types. Return actual data filling these fields:\n"
+            f"Required JSON keys: {', '.join(field_keys)}\n"
+            f"Do not include any markdown fences or conversational text outside the raw JSON object."
         )
         full_system = f"{system_prompt}\n\n{schema_instruction}" if system_prompt else schema_instruction
 
@@ -141,6 +147,15 @@ class OpenRouterProvider(AIProvider):
 
         if response.status_code == 429:
             raise RuntimeError("OpenRouter rate limit exceeded. Please wait a moment.")
+
+        if response.status_code == 404 and (":free" in self._model_name or "llama-3.2" in self._model_name):
+            logger.warning(f"OpenRouter model {self._model_name} unavailable (404). Auto-recovering using 'cohere/north-mini-code:free'...")
+            payload["model"] = "cohere/north-mini-code:free"
+            async with httpx.AsyncClient(timeout=settings.AI_TIMEOUT_SECONDS) as retry_client:
+                response = await retry_client.post(url, json=payload, headers=headers)
+                if response.status_code == 404:
+                    payload["model"] = "openrouter/free"
+                    response = await retry_client.post(url, json=payload, headers=headers)
 
         if response.status_code != 200:
             raise RuntimeError(f"OpenRouter API error (HTTP {response.status_code}): {response.text}")

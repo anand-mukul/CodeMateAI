@@ -19,7 +19,15 @@ from app.models.user import User
 from app.models.device import UserDevice
 from app.models.session import UserSession
 from app.models.subscription import Plan, Subscription, UsageRecord
+from app.models.enums import AccountStatus, DeviceStatus, SessionStatus, UserRole, PlanTier
 from app.services.subscription_service import SubscriptionService
+
+PRIVILEGED_ROLES = {
+    UserRole.SUPER_ADMIN.value,
+    UserRole.ADMIN.value,
+    UserRole.SUPPORT_AGENT.value,
+    UserRole.ANALYST.value,
+}
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -45,7 +53,8 @@ async def get_current_user_and_session(
                     password_hash="dev_placeholder_hash",
                     display_name="Developer Local",
                     email_verified=True,
-                    account_status="active",
+                    role=UserRole.SUPER_ADMIN.value,
+                    account_status=AccountStatus.ACTIVE.value,
                 )
                 db.add(dev_user)
                 await db.commit()
@@ -53,7 +62,7 @@ async def get_current_user_and_session(
                 await SubscriptionService.get_or_create_user_subscription(db, dev_user.id)
 
             dev_sess_q = select(UserSession).where(
-                and_(UserSession.user_id == dev_user.id, UserSession.session_status == "active")
+                and_(UserSession.user_id == dev_user.id, UserSession.session_status == SessionStatus.ACTIVE.value)
             )
             dev_sess_res = await db.execute(dev_sess_q)
             dev_sess = dev_sess_res.scalars().first()
@@ -63,7 +72,7 @@ async def get_current_user_and_session(
                     user_id=dev_user.id,
                     device_id="dev_device_local",
                     refresh_token_hash="dev_refresh_hash",
-                    session_status="active",
+                    session_status=SessionStatus.ACTIVE.value,
                     expires_at=utc_now() + timedelta(days=365),
                 )
                 db.add(dev_sess)
@@ -96,7 +105,7 @@ async def get_current_user_and_session(
     user_res = await db.execute(user_query)
     user = user_res.scalars().first()
 
-    if not user or user.account_status != "active":
+    if not user or (user.account_status or "").upper() != AccountStatus.ACTIVE.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is suspended, disabled, or not found.",
@@ -109,7 +118,7 @@ async def get_current_user_and_session(
     sess_res = await db.execute(sess_query)
     session = sess_res.scalars().first()
 
-    if not session or session.session_status != "active":
+    if not session or (session.session_status or "").upper() != SessionStatus.ACTIVE.value:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Session has been revoked or expired. Please re-authenticate.",
@@ -117,7 +126,12 @@ async def get_current_user_and_session(
         )
 
     # Verify device status & token-device binding (Strict Anti-Account Sharing)
-    if x_device_id and token_device_id and x_device_id != token_device_id:
+    # Allow seamless web companion dashboard and extension pairing on the same machine
+    is_web_scope = (
+        (x_device_id and ("web" in x_device_id.lower()))
+        or (token_device_id and ("web" in token_device_id.lower()))
+    )
+    if not is_web_scope and x_device_id and token_device_id and x_device_id != token_device_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -133,7 +147,7 @@ async def get_current_user_and_session(
         )
         dev_res = await db.execute(dev_query)
         dev = dev_res.scalars().first()
-        if dev and dev.device_status == "revoked":
+        if dev and (dev.device_status or "").upper() == DeviceStatus.REVOKED.value:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Device has been revoked. Account sharing is strictly prohibited.",
@@ -160,12 +174,18 @@ def require_feature_entitlement(feature_name: str):
     """
     Factory dependency verifying that the user's active plan explicitly entitles the requested feature.
     If credentials are provided (or in production), strictly validates active plan entitlements.
+    Platform administrators (SUPER_ADMIN, ADMIN) bypass all feature gates with executive access.
     """
     async def _dependency(
         credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ) -> User:
+        # Executive bypass for platform administrators & privileged staff
+        user_role = (user.role or "").upper()
+        if user_role in PRIVILEGED_ROLES:
+            return user
+
         if not credentials and settings.ENVIRONMENT != "production":
             return user
 
@@ -176,7 +196,7 @@ def require_feature_entitlement(feature_name: str):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
-                    "detail": f"Feature '{feature_name}' is not included in your current '{plan.name}' plan. Please upgrade to the AutoPilot Pass (₹61/week) for full access.",
+                    "detail": f"Feature '{feature_name}' is not included in your current '{plan.name}' plan. Please upgrade to the AutoPilot Pass for full access.",
                     "code": "FEATURE_NOT_ENTITLED",
                     "feature": feature_name,
                     "current_plan": plan.id,
@@ -190,41 +210,46 @@ def require_feature_entitlement(feature_name: str):
 def enforce_daily_quota(feature_name: str):
     """
     Factory dependency verifying daily AI request quotas and recording consumption.
-    If credentials are provided (or in production), strictly checks and increments quota.
+    Platform administrators (SUPER_ADMIN, ADMIN) are exempt from request limits (infinite quota).
     """
     async def _dependency(
         credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ) -> User:
-        if not credentials and settings.ENVIRONMENT != "production":
-            return user
+        user_role = (user.role or "").upper()
+        is_admin_role = user_role in PRIVILEGED_ROLES
 
-        sub, plan = await SubscriptionService.get_or_create_user_subscription(db, user.id)
         today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-        # Sum total requests consumed today
-        usage_today = await SubscriptionService.get_usage_today(db, user.id)
+        if not is_admin_role:
+            if not credentials and settings.ENVIRONMENT != "production":
+                return user
 
-        if usage_today >= plan.ai_usage_limit:
-            # Calculate seconds remaining until UTC midnight
-            now_utc = datetime.now(timezone.utc)
-            midnight_utc = (now_utc.replace(hour=0, minute=0, second=0, microsecond=0)).timestamp() + 86400
-            retry_after_sec = max(60, int(midnight_utc - now_utc.timestamp()))
+            sub, plan = await SubscriptionService.get_or_create_user_subscription(db, user.id)
 
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                headers={"Retry-After": str(retry_after_sec)},
-                detail={
-                    "detail": f"Daily AI quota limit of {plan.ai_usage_limit} requests reached for plan '{plan.name}'. Quota resets at 00:00 UTC.",
-                    "code": "QUOTA_EXCEEDED",
-                    "plan": plan.id,
-                    "limit": plan.ai_usage_limit,
-                    "retry_after": retry_after_sec,
-                },
-            )
+            # Sum total requests consumed today
+            usage_today = await SubscriptionService.get_usage_today(db, user.id)
 
-        # Record or increment usage
+            if usage_today >= plan.ai_usage_limit:
+                # Calculate seconds remaining until UTC midnight
+                now_utc = datetime.now(timezone.utc)
+                midnight_utc = (now_utc.replace(hour=0, minute=0, second=0, microsecond=0)).timestamp() + 86400
+                retry_after_sec = max(60, int(midnight_utc - now_utc.timestamp()))
+
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    headers={"Retry-After": str(retry_after_sec)},
+                    detail={
+                        "detail": f"Daily AI quota limit of {plan.ai_usage_limit} requests reached for plan '{plan.name}'. Quota resets at 00:00 UTC.",
+                        "code": "QUOTA_EXCEEDED",
+                        "plan": plan.id,
+                        "limit": plan.ai_usage_limit,
+                        "retry_after": retry_after_sec,
+                    },
+                )
+
+        # Record or increment usage for analytics/auditing
         record_query = select(UsageRecord).where(
             and_(
                 UsageRecord.user_id == user.id,
@@ -254,12 +279,35 @@ def enforce_daily_quota(feature_name: str):
     return _dependency
 
 
+async def require_verified_email(
+    user: User = Depends(get_current_user),
+) -> User:
+    """Strictly enforces that the user has verified their email address before accessing AI services."""
+    user_role = (user.role or "").upper()
+    if user_role in PRIVILEGED_ROLES:
+        return user
+
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "detail": "Email verification required. Please click the confirmation link sent to your inbox before accessing CodeMate AI services.",
+                "code": "EMAIL_NOT_VERIFIED",
+            },
+        )
+    return user
+
+
 async def verify_byok_entitlement(
     request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Verifies that if client supplies a custom BYOK API key, active plan entitles 'byok'."""
+    user_role = (user.role or "").upper()
+    if user_role in PRIVILEGED_ROLES:
+        return
+
     api_key = request.headers.get("x-codemate-api-key")
     if api_key:
         sub, plan = await SubscriptionService.get_or_create_user_subscription(db, user.id)
@@ -268,7 +316,7 @@ async def verify_byok_entitlement(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
-                    "detail": "Custom API key (BYOK) access is exclusive to the AutoPilot Pass (₹61/week). Please upgrade to use your own keys.",
+                    "detail": "Custom API key (BYOK) access is exclusive to the AutoPilot Pass. Please upgrade to use your own keys.",
                     "code": "FEATURE_NOT_ENTITLED",
                     "feature": "byok",
                     "current_plan": plan.id,
@@ -295,14 +343,26 @@ async def get_authorized_provider(
     model_override = request.headers.get("x-codemate-model")
     api_key_override = request.headers.get("x-codemate-api-key")
 
-    # If user is on Free plan, strictly enforce free models
-    if plan.id == "free":
-        target_provider = (provider_override or "gemini").lower().strip()
-        if target_provider == "openrouter":
-            target_model = "openrouter/free"
-        else:
-            target_provider = "gemini"
-            target_model = "gemini-3.5-flash-lite"
+    # Platform administrators & privileged staff get full model access & custom BYOK
+    user_role = (user.role or "").upper()
+    if user_role in PRIVILEGED_ROLES:
+        return ProviderManager.get_provider(
+            override=provider_override,
+            model_override=model_override,
+            api_key_override=api_key_override,
+        )
+
+    # If user is on Free plan, strictly enforce zero-cost open models (No Managed Gemini, No BYOK keys)
+    if (plan.id or "").upper() in ("FREE", "FREE_TIER"):
+        if api_key_override:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Custom BYOK keys require the AutoPilot Pass. Free Tier uses OpenRouter zero-cost models.",
+            )
+        target_provider = (provider_override or "openrouter").lower().strip()
+        if target_provider not in ("openrouter",):
+            target_provider = "openrouter"
+        target_model = model_override or "cohere/north-mini-code:free"
 
         return ProviderManager.get_provider(
             override=target_provider,

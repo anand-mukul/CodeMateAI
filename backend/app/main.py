@@ -9,14 +9,13 @@ from contextlib import asynccontextmanager
 from typing import Dict, Tuple
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
 from app.core.logging import logger
 from app.api.router import api_router
-from app.api.routes.web_portal import router as web_portal_router, WEB_PORTAL_HTML
 from app.db.session import init_db, close_db
 
 
@@ -38,8 +37,8 @@ app = FastAPI(
     title=settings.SERVICE_NAME,
     version=settings.SERVICE_VERSION,
     description="Intelligent coding practice assistant backend powering CodeMate AI Chrome Extension.",
-    docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
-    redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
+    docs_url="/docs",
+    redoc_url="/redoc",
     lifespan=lifespan,
 )
 
@@ -224,17 +223,16 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Mount versioned API routes
 app.include_router(api_router)
-app.include_router(web_portal_router)
 
 
 @app.get("/", tags=["Root"])
-async def root(request: Request):
-    if "text/html" in request.headers.get("accept", ""):
-        return HTMLResponse(content=WEB_PORTAL_HTML)
+async def root():
     return {
         "service": settings.SERVICE_NAME,
         "version": settings.SERVICE_VERSION,
         "environment": settings.ENVIRONMENT,
+        "status": "operational",
+        "api_docs": "/docs",
         "health_check": "/api/health",
         "readiness_check": "/api/ready",
     }

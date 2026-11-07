@@ -14,6 +14,7 @@ from app.db.base import utc_now, ensure_utc
 from app.models.user import User
 from app.models.subscription import Plan, Subscription, PromoCode, PromoRedemption
 from app.models.admin import AdminAuditLog
+from app.models.enums import SubscriptionStatus, PlanTier
 from app.schemas.promo import (
     AdminPromoCodeCreateRequest,
     AdminPromoCodeUpdateRequest,
@@ -108,7 +109,7 @@ class PromoService:
         db: AsyncSession,
         user: User,
         code: str,
-        plan_id: str = "autopilot_weekly",
+        plan_id: str = PlanTier.PLAN_AUTOPILOT_PASS.value,
     ) -> dict:
         """
         Redeems a 100% free promotional pass.
@@ -117,12 +118,13 @@ class PromoService:
         """
         clean = (code or "").strip().upper()
 
-        # Fetch plan
-        plan_query = select(Plan).where(Plan.id == plan_id)
+        # Fetch plan (case-resilient, handles aliases)
+        norm_plan_id = plan_id.upper() if plan_id else PlanTier.PLAN_AUTOPILOT_PASS.value
+        plan_query = select(Plan).where(or_(Plan.id == norm_plan_id, Plan.id == plan_id))
         plan_res = await db.execute(plan_query)
         plan = plan_res.scalars().first()
         if not plan:
-            plan_query = select(Plan).where(Plan.id == "autopilot_weekly")
+            plan_query = select(Plan).where(Plan.id.in_([PlanTier.PLAN_AUTOPILOT_PASS.value, "autopilot_weekly"]))
             plan_res = await db.execute(plan_query)
             plan = plan_res.scalars().first()
 
@@ -163,7 +165,7 @@ class PromoService:
             end_time = now + timedelta(days=duration_days)
 
         sub.plan_id = plan.id
-        sub.status = "active"
+        sub.status = SubscriptionStatus.ACTIVE.value
         sub.billing_provider = "promo_code"
         sub.current_period_start = start_time
         sub.current_period_end = end_time
@@ -245,7 +247,7 @@ class PromoService:
             end_time = now + timedelta(days=duration_days)
 
         sub.plan_id = plan.id
-        sub.status = "active"
+        sub.status = SubscriptionStatus.ACTIVE.value
         sub.billing_provider = "admin_promotional_grant"
         sub.current_period_start = now
         sub.current_period_end = end_time

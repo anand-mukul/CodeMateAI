@@ -18,6 +18,15 @@ from app.models.session import UserSession
 from app.models.subscription import Plan, Subscription
 from app.models.support import SupportTicket
 from app.models.user import User
+from app.models.enums import (
+    SubscriptionStatus,
+    SessionStatus,
+    FeedbackStatus,
+    TicketStatus,
+    UserRole,
+    AccountStatus,
+    PlanTier,
+)
 from app.schemas.admin import (
     AdminAuditLogDTO,
     AdminSystemHealthResponse,
@@ -109,19 +118,23 @@ async def list_admin_users(
     for u in users:
         # Fetch active sub
         sub_q = select(Subscription, Plan).join(Plan, Subscription.plan_id == Plan.id).where(
-            Subscription.user_id == u.id, Subscription.status == "active"
+            Subscription.user_id == u.id,
+            Subscription.status == SubscriptionStatus.ACTIVE.value
         )
         sub_res = await db.execute(sub_q)
         sub_row = sub_res.first()
 
-        plan_id = sub_row[0].plan_id if sub_row else "free"
-        plan_name = sub_row[1].name if sub_row else "Free"
+        plan_id = sub_row[0].plan_id if sub_row else PlanTier.FREE.value
+        plan_name = sub_row[1].name if sub_row else "Free Tier"
 
         # Count devices
         dev_count = (await db.execute(select(func.count(UserDevice.id)).where(UserDevice.user_id == u.id))).scalar_one() or 0
         # Count sessions
         sess_count = (await db.execute(
-            select(func.count(UserSession.id)).where(UserSession.user_id == u.id, UserSession.session_status == "active")
+            select(func.count(UserSession.id)).where(
+                UserSession.user_id == u.id,
+                UserSession.session_status == SessionStatus.ACTIVE.value
+            )
         )).scalar_one() or 0
 
         summaries.append(
@@ -129,7 +142,7 @@ async def list_admin_users(
                 id=u.id,
                 email=u.email,
                 display_name=u.display_name,
-                role=u.role or "user",
+                role=u.role or UserRole.USER.value,
                 account_status=u.account_status,
                 email_verified=u.email_verified,
                 created_at=u.created_at,
@@ -157,16 +170,16 @@ async def suspend_user(
     if not target:
         raise HTTPException(status_code=404, detail="Target user not found.")
 
-    if target.role in ("super_admin", "admin") and admin.role != "super_admin":
+    if target.role in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value) and admin.role != UserRole.SUPER_ADMIN.value:
         raise HTTPException(status_code=403, detail="Only Super Admins can suspend other administrative accounts.")
 
-    target.account_status = "suspended"
+    target.account_status = AccountStatus.SUSPENDED.value
 
     # Terminate all active sessions
     await db.execute(
         update(UserSession)
         .where(UserSession.user_id == user_id)
-        .values(session_status="revoked")
+        .values(session_status=SessionStatus.REVOKED.value)
     )
     await db.commit()
 
@@ -181,7 +194,7 @@ async def suspend_user(
         request=request,
     )
 
-    return {"status": "success", "message": f"User '{target.email}' suspended.", "account_status": "suspended"}
+    return {"status": "success", "message": f"User '{target.email}' suspended.", "account_status": AccountStatus.SUSPENDED.value}
 
 
 @router.post("/users/{user_id}/reactivate")
@@ -197,7 +210,7 @@ async def reactivate_user(
     if not target:
         raise HTTPException(status_code=404, detail="Target user not found.")
 
-    target.account_status = "active"
+    target.account_status = AccountStatus.ACTIVE.value
     await db.commit()
 
     await AuditService.log_admin_action(
@@ -211,7 +224,7 @@ async def reactivate_user(
         request=request,
     )
 
-    return {"status": "success", "message": f"User '{target.email}' reactivated.", "account_status": "active"}
+    return {"status": "success", "message": f"User '{target.email}' reactivated.", "account_status": AccountStatus.ACTIVE.value}
 
 
 @router.post("/users/{user_id}/role")
@@ -256,8 +269,8 @@ async def revoke_user_sessions(
     """Forcefully terminates all active sessions for a user. Audited."""
     res = await db.execute(
         update(UserSession)
-        .where(UserSession.user_id == user_id, UserSession.session_status == "active")
-        .values(session_status="revoked")
+        .where(UserSession.user_id == user_id, UserSession.session_status == SessionStatus.ACTIVE.value)
+        .values(session_status=SessionStatus.REVOKED.value)
     )
     revoked_count = res.rowcount or 0
     await db.commit()
@@ -315,11 +328,15 @@ async def get_admin_system_health(
     provider_status = await provider.check_connection()
 
     # Active queues
-    active_sessions = (await db.execute(select(func.count(UserSession.id)).where(UserSession.session_status == "active"))).scalar_one() or 0
-    unresolved_tickets = (await db.execute(
-        select(func.count(SupportTicket.id)).where(SupportTicket.status.in_(["OPEN", "IN_PROGRESS", "WAITING_FOR_SUPPORT"]))
+    active_sessions = (await db.execute(
+        select(func.count(UserSession.id)).where(UserSession.session_status == SessionStatus.ACTIVE.value)
     )).scalar_one() or 0
-    pending_feedback = (await db.execute(select(func.count(UserFeedback.id)).where(UserFeedback.status == "new"))).scalar_one() or 0
+    unresolved_tickets = (await db.execute(
+        select(func.count(SupportTicket.id)).where(SupportTicket.status == TicketStatus.OPEN.value)
+    )).scalar_one() or 0
+    pending_feedback = (await db.execute(
+        select(func.count(UserFeedback.id)).where(UserFeedback.status == FeedbackStatus.NEW.value)
+    )).scalar_one() or 0
 
     return AdminSystemHealthResponse(
         status="healthy" if db_ok and provider_status.get("available") else "degraded",

@@ -37,7 +37,14 @@ from app.core.logging import logger
 from app.services.project_indexer.language_detector import LanguageDetector
 from app.services.solution_generator import SolutionGeneratorService
 from fastapi import Request
-from app.services.entitlement_service import get_current_user
+from app.services.entitlement_service import (
+    get_current_user,
+    require_feature_entitlement,
+    enforce_daily_quota,
+    verify_byok_entitlement,
+    require_verified_email,
+)
+from app.services.analytics.event_collector import EventCollector
 from app.services.project_agent.code_generator import CodeGenerator
 from app.services.project_agent.patch_engine import PatchEngine, PatchValidationError
 from app.services.project_agent.repair_workflow import RepairWorkflow
@@ -49,7 +56,7 @@ from app.services.project_indexer.spring_boot_analyzer import SpringBootAnalyzer
 from app.services.subscription_service import SubscriptionService
 
 
-router = APIRouter(prefix="/projects", tags=["Project Intelligence"])
+router = APIRouter(prefix="/projects", tags=["Project Intelligence"], dependencies=[Depends(require_verified_email)])
 
 
 async def _get_user_project(db: AsyncSession, project_id: str, user_id: str) -> Project:
@@ -462,8 +469,21 @@ async def diagnose_and_fix(
 # EPHEMERAL PROJECT CONTEXT & PROGRESSIVE FILE SOLVING (EPC-PFS) ENDPOINTS
 # =========================================================================
 
-@router.post("/ephemeral/blueprint", response_model=EphemeralBlueprintResponse)
-async def generate_ephemeral_blueprint(payload: EphemeralBlueprintRequest, request: Request):
+@router.post(
+    "/ephemeral/blueprint",
+    response_model=EphemeralBlueprintResponse,
+    dependencies=[
+        Depends(require_feature_entitlement("one_click_insert")),
+        Depends(enforce_daily_quota("autopilot")),
+        Depends(verify_byok_entitlement),
+    ],
+)
+async def generate_ephemeral_blueprint(
+    payload: EphemeralBlueprintRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Stage 1: Architect Engine
     Deeply analyzes problem statement and workspace structure WITHOUT generating full code,
@@ -558,6 +578,13 @@ async def generate_ephemeral_blueprint(payload: EphemeralBlueprintRequest, reque
     import hashlib
     project_hash = hashlib.sha256((payload.problem_title + "".join(sorted_files)).encode("utf-8")).hexdigest()[:12]
 
+    await EventCollector.record_server_event(
+        db=db,
+        event_name="ephemeral_blueprint_created",
+        user_id=user.id,
+        feature_name="autopilot",
+    )
+
     return EphemeralBlueprintResponse(
         project_id=f"ephemeral_{project_hash}",
         framework=framework,
@@ -572,8 +599,21 @@ async def generate_ephemeral_blueprint(payload: EphemeralBlueprintRequest, reque
     )
 
 
-@router.post("/ephemeral/complete-file", response_model=EphemeralCompleteFileResponse)
-async def complete_ephemeral_file(payload: EphemeralCompleteFileRequest, request: Request):
+@router.post(
+    "/ephemeral/complete-file",
+    response_model=EphemeralCompleteFileResponse,
+    dependencies=[
+        Depends(require_feature_entitlement("one_click_insert")),
+        Depends(enforce_daily_quota("autopilot")),
+        Depends(verify_byok_entitlement),
+    ],
+)
+async def complete_ephemeral_file(
+    payload: EphemeralCompleteFileRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Stage 2: Targeted File Worker
     Completes ONLY the requested single file using the shared architectural blueprint
@@ -613,7 +653,15 @@ async def complete_ephemeral_file(payload: EphemeralCompleteFileRequest, request
             "    }\n"
             "}\n"
         )
-        return EphemeralCompleteFileResponse(
+        await EventCollector.record_server_event(
+        db=db,
+        event_name="ephemeral_file_completed",
+        user_id=user.id,
+        feature_name="autopilot",
+        model_identifier=model_override,
+    )
+
+    return EphemeralCompleteFileResponse(
             filename=fname,
             code=clean_code,
             explanation="Restored DemoApplication.java to pristine SpringBootApplication runner.",
@@ -713,6 +761,14 @@ async def complete_ephemeral_file(payload: EphemeralCompleteFileRequest, request
                 idx = code.rfind("}")
                 code = code[:idx] + code[idx+1:]
                 excess -= 1
+
+    await EventCollector.record_server_event(
+        db=db,
+        event_name="ephemeral_file_completed",
+        user_id=user.id,
+        feature_name="autopilot",
+        model_identifier=model_override,
+    )
 
     return EphemeralCompleteFileResponse(
         filename=fname,

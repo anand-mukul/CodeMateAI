@@ -9,7 +9,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Enu
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, generate_uuid, utc_now
-from app.models.enums import TicketPriority, TicketStatus
+from app.models.enums import TicketPriority, TicketStatus, SupportCategory, UserRole
 
 
 class SupportTicket(Base, TimestampMixin):
@@ -19,9 +19,9 @@ class SupportTicket(Base, TimestampMixin):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     assigned_agent_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     subject: Mapped[str] = mapped_column(String(200), nullable=False)
-    category: Mapped[str] = mapped_column(String(50), nullable=False)  # account_access, billing_payment, ai_functionality, editor_integration, project_intelligence, bug_report, general_support
-    priority: Mapped[str] = mapped_column(SQLEnum(TicketPriority, native_enum=False, length=20, values_callable=lambda x: [e.value for e in x]), default=TicketPriority.NORMAL.value, nullable=False)
-    status: Mapped[str] = mapped_column(SQLEnum(TicketStatus, native_enum=False, length=30, values_callable=lambda x: [e.value for e in x]), default=TicketStatus.OPEN.value, nullable=False, index=True)
+    category: Mapped[str] = mapped_column(SQLEnum(SupportCategory, name="support_category_enum", values_callable=lambda x: [e.value for e in x]), default=SupportCategory.GENERAL_SUPPORT.value, nullable=False)
+    priority: Mapped[str] = mapped_column(SQLEnum(TicketPriority, name="ticket_priority_enum", values_callable=lambda x: [e.value for e in x]), default=TicketPriority.NORMAL.value, nullable=False)
+    status: Mapped[str] = mapped_column(SQLEnum(TicketStatus, name="ticket_status_enum", values_callable=lambda x: [e.value for e in x]), default=TicketStatus.OPEN.value, nullable=False, index=True)
     last_reply_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -35,7 +35,7 @@ class SupportMessage(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     ticket_id: Mapped[str] = mapped_column(String(36), ForeignKey("support_tickets.id", ondelete="CASCADE"), nullable=False, index=True)
     sender_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    sender_role: Mapped[str] = mapped_column(String(30), nullable=False)  # user, support_agent, admin
+    sender_role: Mapped[str] = mapped_column(SQLEnum(UserRole, name="user_role_enum", create_type=False, values_callable=lambda x: [e.value for e in x]), nullable=False)
     message_text: Mapped[str] = mapped_column(Text, nullable=False)
     attachment_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     is_internal_note: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)  # MUST NEVER be exposed to users

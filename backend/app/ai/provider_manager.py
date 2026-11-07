@@ -41,8 +41,7 @@ class ProviderManager:
             target = (settings.DEFAULT_AI_PROVIDER or "gemini").lower().strip()
 
         if target == "mock":
-            from app.ai.mock_provider import MockAIProvider
-            return MockAIProvider(model_name=model_override or "mock-deterministic-v1")
+            raise ValueError("Mock AI Provider has been permanently decommissioned for production.")
 
         if target == "openrouter":
             # Guard against passing Gemini/OpenAI bare model names to OpenRouter

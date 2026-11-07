@@ -8,19 +8,65 @@ from app.schemas.problem import ProblemRequest, normalize_language_str
 
 
 class ComplexityItem(BaseModel):
-    notation: str = Field(..., description="Big-O notation (e.g. 'O(N)', 'O(N log N)', 'O(1)')")
-    explanation: str = Field(..., description="Clear mathematical justification for this complexity")
+    notation: str = Field(default="O(1)", description="Big-O notation (e.g. 'O(N)', 'O(N log N)', 'O(1)')")
+    explanation: str = Field(default="Asymptotic complexity", description="Clear mathematical justification for this complexity")
+
+    @field_validator("notation", mode="before")
+    @classmethod
+    def normalize_notation(cls, v: Any) -> str:
+        if isinstance(v, dict):
+            return str(v.get("notation") or v.get("value") or "O(1)")
+        return str(v) if v else "O(1)"
+
+    @field_validator("explanation", mode="before")
+    @classmethod
+    def normalize_explanation(cls, v: Any) -> str:
+        if isinstance(v, dict):
+            return str(v.get("explanation") or "Asymptotic complexity")
+        return str(v) if v else "Asymptotic complexity"
 
 
 class ComplexityAnalysis(BaseModel):
-    time: ComplexityItem = Field(..., description="Asymptotic time complexity breakdown")
-    space: ComplexityItem = Field(..., description="Auxiliary space complexity breakdown")
+    time: ComplexityItem = Field(default_factory=lambda: ComplexityItem(notation="O(N)", explanation="Linear time traversal"))
+    space: ComplexityItem = Field(default_factory=lambda: ComplexityItem(notation="O(1)", explanation="Auxiliary space complexity"))
+
+    @field_validator("time", "space", mode="before")
+    @classmethod
+    def normalize_item(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return {"notation": v, "explanation": "Asymptotic complexity"}
+        if isinstance(v, dict):
+            return {
+                "notation": v.get("notation") or v.get("value") or "O(1)",
+                "explanation": v.get("explanation") or "Asymptotic complexity",
+            }
+        return v
 
 
 class ApproachDetail(BaseModel):
-    name: str = Field(..., description="Name of the selected approach (e.g., 'Prefix Sum with Hash Map')")
-    explanation: str = Field(..., description="Detailed explanation of how the algorithm operates")
+    name: str = Field(default="Optimal Algorithmic Approach", description="Name of the selected approach")
+    explanation: str = Field(default="Detailed algorithmic solution walkthrough", description="Detailed explanation of how the algorithm operates")
     steps: List[str] = Field(default_factory=list, description="Step-by-step logic breakdown")
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, v: Any) -> str:
+        return str(v) if v else "Optimal Algorithmic Approach"
+
+    @field_validator("explanation", mode="before")
+    @classmethod
+    def normalize_explanation(cls, v: Any) -> str:
+        return str(v) if v else "Detailed algorithmic solution walkthrough"
+
+    @field_validator("steps", mode="before")
+    @classmethod
+    def normalize_steps(cls, v: Any) -> List[str]:
+        if isinstance(v, list):
+            return [str(item) for item in v]
+        if isinstance(v, str):
+            lines = [l.strip("- *•0123456789.").strip() for l in v.split("\n") if l.strip()]
+            return lines or [v]
+        return []
 
 
 class WorkspaceFile(BaseModel):
@@ -30,9 +76,9 @@ class WorkspaceFile(BaseModel):
 
 class SolutionResponse(BaseModel):
     success: bool = Field(default=True, description="Whether the solution was generated successfully")
-    problem_summary: str = Field(..., description="Summary of the problem")
-    approach: ApproachDetail = Field(..., description="Algorithmic approach breakdown")
-    algorithm: str = Field(..., description="Primary algorithm used (e.g., 'Dynamic Programming')")
+    problem_summary: str = Field(default="Competitive programming problem solution", description="Summary of the problem")
+    approach: ApproachDetail = Field(default_factory=ApproachDetail, description="Algorithmic approach breakdown")
+    algorithm: str = Field(default="Optimal Algorithm", description="Primary algorithm used")
     data_structures: List[str] = Field(default_factory=list, description="Data structures utilized")
     code: str = Field(..., description="Complete, compilable source code")
     workspace_files: Optional[List[WorkspaceFile]] = Field(
@@ -40,14 +86,78 @@ class SolutionResponse(BaseModel):
         description="Completed multi-file code list",
     )
     language: str = Field(..., description="Programming language of the code (e.g., 'cpp', 'python')")
-    complexity: ComplexityAnalysis = Field(..., description="Time and space complexity analysis")
+    complexity: ComplexityAnalysis = Field(default_factory=ComplexityAnalysis, description="Time and space complexity analysis")
     edge_cases: List[str] = Field(default_factory=list, description="Boundary cases addressed in code")
     sample_case_analysis: List[str] = Field(
         default_factory=list, description="Walkthrough of how the code handles sample examples"
     )
     warnings: List[str] = Field(default_factory=list, description="Any caveats or precision warnings")
-    provider: str = Field(..., description="AI provider that generated the response ('mock', 'gemini', 'openai')")
-    model: str = Field(..., description="Model identifier used")
+    provider: str = Field(default="gemini", description="AI provider that generated the response ('gemini', 'openrouter', 'openai')")
+    model: str = Field(default="default", description="Model identifier used")
+
+    @field_validator("problem_summary", mode="before")
+    @classmethod
+    def normalize_problem_summary(cls, v: Any) -> str:
+        return str(v) if v else "Competitive programming problem solution"
+
+    @field_validator("algorithm", mode="before")
+    @classmethod
+    def normalize_algorithm(cls, v: Any) -> str:
+        return str(v) if v else "Optimal Algorithm"
+
+    @field_validator("approach", mode="before")
+    @classmethod
+    def normalize_approach(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            lines = [l.strip("- *•0123456789.").strip() for l in v.split("\n") if l.strip()]
+            return {
+                "name": "Optimal Algorithmic Approach",
+                "explanation": v,
+                "steps": lines or [v],
+            }
+        if isinstance(v, dict):
+            name = v.get("name") or "Optimal Algorithmic Approach"
+            explanation = v.get("explanation") or v.get("intuition") or v.get("description") or str(v)
+            steps = v.get("steps") or []
+            if isinstance(steps, str):
+                steps = [l.strip("- *•0123456789.").strip() for l in steps.split("\n") if l.strip()] or [steps]
+            return {"name": name, "explanation": explanation, "steps": steps}
+        return v
+
+    @field_validator("complexity", mode="before")
+    @classmethod
+    def normalize_complexity(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return {
+                "time": {"notation": v, "explanation": "Asymptotic time complexity"},
+                "space": {"notation": "O(1)", "explanation": "Auxiliary space complexity"},
+            }
+        if isinstance(v, dict):
+            time_val = v.get("time") or v.get("time_complexity") or "O(N)"
+            space_val = v.get("space") or v.get("space_complexity") or "O(1)"
+            return {
+                "time": time_val if isinstance(time_val, dict) else {"notation": str(time_val), "explanation": "Time complexity"},
+                "space": space_val if isinstance(space_val, dict) else {"notation": str(space_val), "explanation": "Space complexity"},
+            }
+        return v
+
+    @field_validator("data_structures", "edge_cases", "sample_case_analysis", "warnings", mode="before")
+    @classmethod
+    def normalize_list_fields(cls, v: Any) -> List[str]:
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [str(item) for item in v]
+        if isinstance(v, str):
+            v_clean = v.strip()
+            if not v_clean:
+                return []
+            if "," in v_clean and "\n" not in v_clean:
+                return [item.strip() for item in v_clean.split(",") if item.strip()]
+            if "\n" in v_clean:
+                return [l.strip("- *•0123456789.").strip() for l in v_clean.split("\n") if l.strip()]
+            return [v_clean]
+        return [str(v)]
 
     @field_validator("workspace_files", mode="before")
     @classmethod

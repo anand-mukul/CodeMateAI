@@ -6,11 +6,17 @@ POST /api/solution/fix
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from app.schemas.solution import SolutionFixRequest, SolutionFixResponse
 from app.services.solution_generator import SolutionGeneratorService
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.session import get_db
+from app.models.user import User
+from app.services.analytics.event_collector import EventCollector
 from app.services.entitlement_service import (
+    get_current_user,
     require_feature_entitlement,
     enforce_daily_quota,
     verify_byok_entitlement,
     get_authorized_provider,
+    require_verified_email,
 )
 from app.ai.provider import AIProvider
 from app.ai.provider_manager import ProviderManager
@@ -25,6 +31,7 @@ router = APIRouter(prefix="/solution", tags=["Error Diagnostics & Patching"])
     response_model=SolutionFixResponse,
     dependencies=[
         Depends(verify_request_size),
+        Depends(require_verified_email),
         Depends(require_feature_entitlement("fix")),
         Depends(enforce_daily_quota("fix")),
         Depends(verify_byok_entitlement),
@@ -34,6 +41,8 @@ async def fix_solution(
     request: Request,
     body: SolutionFixRequest,
     provider: AIProvider = Depends(get_authorized_provider),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Diagnoses compiler errors, runtime exceptions, or wrong answer bugs in student code
@@ -44,6 +53,13 @@ async def fix_solution(
 
     try:
         diagnosed_fix = await SolutionGeneratorService.diagnose_and_fix_solution(body, provider=provider)
+        await EventCollector.record_server_event(
+            db=db,
+            event_name="code_debugged",
+            user_id=user.id,
+            feature_name="fix",
+            model_identifier=getattr(provider, "model_name", None),
+        )
         return diagnosed_fix
     except TimeoutError as err:
         logger.error(f"Solution diagnostic timed out: {err}")

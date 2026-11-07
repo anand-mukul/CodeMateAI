@@ -6,11 +6,17 @@ from fastapi import APIRouter, Depends, Request, HTTPException, status
 from app.schemas.problem import ProblemRequest
 from app.schemas.solution import SolutionResponse
 from app.services.solution_generator import SolutionGeneratorService
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.session import get_db
+from app.models.user import User
+from app.services.analytics.event_collector import EventCollector
 from app.services.entitlement_service import (
+    get_current_user,
     require_feature_entitlement,
     enforce_daily_quota,
     verify_byok_entitlement,
     get_authorized_provider,
+    require_verified_email,
 )
 from app.ai.provider import AIProvider
 from app.ai.provider_manager import ProviderManager
@@ -25,6 +31,7 @@ router = APIRouter(prefix="/solution", tags=["Solution Generation"])
     response_model=SolutionResponse,
     dependencies=[
         Depends(verify_request_size),
+        Depends(require_verified_email),
         Depends(require_feature_entitlement("generate")),
         Depends(enforce_daily_quota("generate")),
         Depends(verify_byok_entitlement),
@@ -34,6 +41,8 @@ async def generate_solution(
     request: Request,
     problem: ProblemRequest,
     provider: AIProvider = Depends(get_authorized_provider),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Generates a complete, ready-to-run competitive programming solution in the requested language
@@ -44,6 +53,13 @@ async def generate_solution(
 
     try:
         solution = await SolutionGeneratorService.generate_solution(problem, provider=provider)
+        await EventCollector.record_server_event(
+            db=db,
+            event_name="code_generated",
+            user_id=user.id,
+            feature_name="generate",
+            model_identifier=getattr(provider, "model_name", None),
+        )
         return solution
     except TimeoutError as err:
         logger.error(f"Solution generation timed out for '{problem.title}': {err}")

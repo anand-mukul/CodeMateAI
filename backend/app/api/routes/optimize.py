@@ -5,11 +5,17 @@ CodeMate AI — Code Optimization Endpoint
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from app.schemas.solution import OptimizationRequest, OptimizationResponse
 from app.services.solution_generator import SolutionGeneratorService
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.session import get_db
+from app.models.user import User
+from app.services.analytics.event_collector import EventCollector
 from app.services.entitlement_service import (
+    get_current_user,
     require_feature_entitlement,
     enforce_daily_quota,
     verify_byok_entitlement,
     get_authorized_provider,
+    require_verified_email,
 )
 from app.ai.provider import AIProvider
 from app.ai.provider_manager import ProviderManager
@@ -24,6 +30,7 @@ router = APIRouter(prefix="/solution", tags=["Code Optimization"])
     response_model=OptimizationResponse,
     dependencies=[
         Depends(verify_request_size),
+        Depends(require_verified_email),
         Depends(require_feature_entitlement("optimize")),
         Depends(enforce_daily_quota("optimize")),
         Depends(verify_byok_entitlement),
@@ -33,6 +40,8 @@ async def optimize_solution(
     request: Request,
     body: OptimizationRequest,
     provider: AIProvider = Depends(get_authorized_provider),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Refactors and optimizes a student's existing code to reduce time/space complexity
@@ -43,6 +52,13 @@ async def optimize_solution(
 
     try:
         optimized = await SolutionGeneratorService.optimize_solution(body, provider=provider)
+        await EventCollector.record_server_event(
+            db=db,
+            event_name="code_optimized",
+            user_id=user.id,
+            feature_name="optimize",
+            model_identifier=getattr(provider, "model_name", None),
+        )
         return optimized
     except TimeoutError as err:
         logger.error(f"Optimization timed out: {err}")

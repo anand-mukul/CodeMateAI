@@ -14,6 +14,7 @@ from app.core.logging import logger
 from app.db.base import Base, utc_now
 import app.models  # Ensure all models are registered on Base.metadata
 from app.models.subscription import Plan, PromoCode
+from app.models.enums import BillingInterval, PlanTier
 
 # Detect available PostgreSQL drivers and build active async database URL
 def _resolve_database_url() -> tuple[str, bool]:
@@ -168,16 +169,16 @@ async def init_db() -> None:
 
             await conn.run_sync(migrate_sqlite_columns)
 
-    # Seed or synchronize default plans: ONLY Free Tier and the TWO official paid plans (₹21/day Core Pass, ₹61/week AutoPilot Pass)
+    # Seed or synchronize default plans: ONLY Free Tier and the TWO official paid plans (PLAN_CORE_PASS, PLAN_AUTOPILOT_PASS)
     async with async_session_factory() as session:
         default_plans = [
             Plan(
-                id="free",
+                id="FREE",
                 name="Free Tier",
                 description="Free models only • Manual copy-paste, 5 requests/day on 1 device",
                 price=0,
                 currency="INR",
-                billing_interval="lifetime",
+                billing_interval=BillingInterval.LIFETIME.value,
                 device_limit=1,
                 concurrent_session_limit=1,
                 ai_usage_limit=5,
@@ -185,12 +186,12 @@ async def init_db() -> None:
                 active=True,
             ),
             Plan(
-                id="core_daily",
+                id="PLAN_CORE_PASS",
                 name="Core Pass",
-                description="₹21/day • Manual copy-paste, 25 requests/day on 1 device",
+                description="Daily Pass • Standard AI models, 25 requests/day on 1 device",
                 price=2100,  # ₹21 in paise
                 currency="INR",
-                billing_interval="day",
+                billing_interval=BillingInterval.DAY.value,
                 device_limit=1,
                 concurrent_session_limit=1,
                 ai_usage_limit=25,
@@ -198,14 +199,14 @@ async def init_db() -> None:
                 active=True,
             ),
             Plan(
-                id="autopilot_weekly",
+                id="PLAN_AUTOPILOT_PASS",
                 name="AutoPilot Pass",
-                description="₹61/week • 1-click insertion, Smart Practice Assistant & unlimited BYOK on 1 device",
+                description="Weekly Pass • Direct insertion, practice assistant & BYOK integration",
                 price=6100,  # ₹61 in paise
                 currency="INR",
-                billing_interval="week",
-                device_limit=1,
-                concurrent_session_limit=1,
+                billing_interval=BillingInterval.WEEK.value,
+                device_limit=2,
+                concurrent_session_limit=2,
                 ai_usage_limit=100,
                 feature_entitlements=json.dumps([
                     "analyze",
@@ -219,6 +220,56 @@ async def init_db() -> None:
                     "project_intelligence",
                 ]),
                 active=True,
+            ),
+            # Aliases for backward compatibility (inactive in public listing, resolved via get_plan_by_id)
+            Plan(
+                id="free",
+                name="Free Tier",
+                description="Free models only • Manual copy-paste, 5 requests/day on 1 device",
+                price=0,
+                currency="INR",
+                billing_interval=BillingInterval.LIFETIME.value,
+                device_limit=1,
+                concurrent_session_limit=1,
+                ai_usage_limit=5,
+                feature_entitlements=json.dumps(["analyze", "explain", "generate"]),
+                active=False,
+            ),
+            Plan(
+                id="core_daily",
+                name="Core Pass",
+                description="Daily Pass • Standard AI models, 25 requests/day on 1 device",
+                price=2100,
+                currency="INR",
+                billing_interval=BillingInterval.DAY.value,
+                device_limit=1,
+                concurrent_session_limit=1,
+                ai_usage_limit=25,
+                feature_entitlements=json.dumps(["analyze", "explain", "generate", "optimize", "fix"]),
+                active=False,
+            ),
+            Plan(
+                id="autopilot_weekly",
+                name="AutoPilot Pass",
+                description="Weekly Pass • Direct insertion, practice assistant & BYOK integration",
+                price=6100,
+                currency="INR",
+                billing_interval=BillingInterval.WEEK.value,
+                device_limit=2,
+                concurrent_session_limit=2,
+                ai_usage_limit=100,
+                feature_entitlements=json.dumps([
+                    "analyze",
+                    "explain",
+                    "generate",
+                    "optimize",
+                    "fix",
+                    "autopilot",
+                    "one_click_insert",
+                    "byok",
+                    "project_intelligence",
+                ]),
+                active=False,
             ),
         ]
 
@@ -240,10 +291,15 @@ async def init_db() -> None:
                 existing.feature_entitlements = plan.feature_entitlements
                 existing.active = plan.active
 
-        # Deactivate any other legacy plans (e.g. autopilot_daily, student, pro, premium) so that ONLY the 2 paid plans exist
+        # Ensure ONLY the 3 official canonical tiers are active in public listings
         await session.execute(
             update(Plan)
-            .where(~Plan.id.in_(["free", "core_daily", "autopilot_weekly"]))
+            .where(Plan.id.in_(["FREE", "PLAN_CORE_PASS", "PLAN_AUTOPILOT_PASS"]))
+            .values(active=True)
+        )
+        await session.execute(
+            update(Plan)
+            .where(~Plan.id.in_(["FREE", "PLAN_CORE_PASS", "PLAN_AUTOPILOT_PASS"]))
             .values(active=False)
         )
 
@@ -255,4 +311,4 @@ async def init_db() -> None:
         )
         await session.commit()
         if seeded_count > 0:
-            logger.info(f"[Database] Synchronized {seeded_count} plan(s). Exactly 2 paid plans active: ₹21/day and ₹61/week.")
+            logger.info(f"[Database] Synchronized {seeded_count} billing plan(s) successfully.")

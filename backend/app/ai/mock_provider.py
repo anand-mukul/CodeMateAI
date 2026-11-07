@@ -3,9 +3,11 @@ CodeMate AI — Deterministic Mock AI Provider
 Provides high-fidelity offline simulated responses for local testing and CI/CD without API keys.
 """
 
+import re
 from typing import Any, Dict, Optional, Type, TypeVar
 from pydantic import BaseModel
 from app.ai.provider import AIProvider
+from app.schemas.problem import normalize_language_str
 from app.schemas.analysis import ProblemAnalysis, ProblemExplanation, PotentialApproach
 from app.schemas.solution import (
     SolutionResponse,

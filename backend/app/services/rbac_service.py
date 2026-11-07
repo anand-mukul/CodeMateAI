@@ -18,11 +18,11 @@ from app.services.entitlement_service import get_current_user
 
 
 class AdminRole(str, Enum):
-    SUPER_ADMIN = "super_admin"
-    ADMIN = "admin"
-    SUPPORT_AGENT = "support_agent"
-    ANALYST = "analyst"
-    USER = "user"
+    SUPER_ADMIN = "SUPER_ADMIN"
+    ADMIN = "ADMIN"
+    SUPPORT_AGENT = "SUPPORT_AGENT"
+    ANALYST = "ANALYST"
+    USER = "USER"
 
 
 class AdminPermission(str, Enum):
@@ -81,7 +81,7 @@ def require_admin_permission(permission: AdminPermission):
     async def _dependency(
         user: User = Depends(get_current_user),
     ) -> User:
-        user_role_str = (user.role or "user").lower()
+        user_role_str = (user.role or "USER").upper()
         try:
             role = AdminRole(user_role_str)
         except ValueError:
@@ -113,7 +113,7 @@ def require_admin_role(*allowed_roles: AdminRole):
     async def _dependency(
         user: User = Depends(get_current_user),
     ) -> User:
-        user_role_str = (user.role or "user").lower()
+        user_role_str = (user.role or "USER").upper()
         try:
             role = AdminRole(user_role_str)
         except ValueError:

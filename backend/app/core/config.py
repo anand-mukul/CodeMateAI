@@ -27,8 +27,12 @@ class Settings(BaseSettings):
 
     # Security & CORS
     ALLOWED_ORIGINS: str = Field(
-        default="http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000",
+        default="http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,https://codemate-web.vercel.app",
         description="Comma-separated allowed CORS origins",
+    )
+    FRONTEND_URL: str = Field(
+        default="https://codemate-web.vercel.app",
+        description="Frontend Next.js application URL",
     )
     MAX_REQUEST_SIZE_BYTES: int = Field(
         default=1_048_576, description="Max allowed request payload size in bytes (1MB default)"
@@ -82,6 +86,14 @@ class Settings(BaseSettings):
     DB_POOL_RECYCLE: int = Field(default=1800, description="PostgreSQL pool recycle timeout in seconds")
     DB_POOL_TIMEOUT: int = Field(default=30, description="PostgreSQL pool timeout in seconds")
 
+    # Ephemeral Task Working Memory (Upstash Redis)
+    UPSTASH_REDIS_REST_URL: Optional[str] = Field(
+        default=None, description="Upstash Redis REST URL for ephemeral task context"
+    )
+    UPSTASH_REDIS_REST_TOKEN: Optional[str] = Field(
+        default=None, description="Upstash Redis REST Token"
+    )
+
     @property
     def async_database_url(self) -> str:
         """Normalizes Render/Heroku/Neon postgres:// URLs to SQLAlchemy asyncpg format."""
@@ -115,7 +127,7 @@ class Settings(BaseSettings):
         description="Secret key used for signing JWT access and refresh tokens"
     )
     JWT_ALGORITHM: str = Field(default="HS256", description="JWT signing algorithm")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=15, description="Access token expiration in minutes")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=10080, description="Access token expiration in minutes (7 days default)")
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=30, description="Refresh token expiration in days")
     EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = Field(default=24, description="Email verification expiration")
     PASSWORD_RESET_TOKEN_EXPIRE_HOURS: int = Field(default=1, description="Password reset token expiration")

@@ -1,23 +1,28 @@
 # ==============================================================================
-# CodeMate AI — Production .gitignore
-# Production-grade gitignore covering Node/Vite, Python/FastAPI, OS & IDE artifacts
+# CodeMate AI — Monorepo Production .gitignore
+# Production-grade gitignore covering Extension, Frontend (Next.js), and FastAPI
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
 # 1. Dependencies & Package Managers
 # ------------------------------------------------------------------------------
 node_modules/
+*/node_modules/
+extension/node_modules/
+frontend/node_modules/
 /.pnp
 .pnp.js
 
 # ------------------------------------------------------------------------------
 # 2. Production Build Outputs & Compilations
-# (Compiled into dist/ by `npm run build` from src/ and public/)
 # ------------------------------------------------------------------------------
 dist/
+extension/dist/
 dist-ssr/
 build/
 out/
+frontend/.next/
+frontend/out/
 *.tsbuildinfo
 *.zip
 *.crx
@@ -26,12 +31,7 @@ codemate-phase0-poc/
 
 # ------------------------------------------------------------------------------
 # 3. Test Automation Scripts, Temp Profiles & Test Run Artifacts
-# (Only scripts/build.cjs and scripts/generate-icons.cjs are production build tools)
 # ------------------------------------------------------------------------------
-scripts/*
-!scripts/build.cjs
-!scripts/generate-icons.cjs
-
 backend/app/tests/
 test/
 tests/
@@ -39,6 +39,7 @@ tests/
 coverage/
 .nyc_output/
 test-results/
+*_test_results.json
 *.tmp
 *.temp
 tmp/
@@ -51,6 +52,7 @@ logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
+yarn-error.log*
 pnpm-debug.log*
 
 # ------------------------------------------------------------------------------
@@ -63,6 +65,12 @@ pnpm-debug.log*
 backend/.env
 backend/.env.*
 !backend/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+extension/.env
+extension/.env.*
+!extension/.env.example
 *.pem
 *.key
 
@@ -74,6 +82,7 @@ backend/.env.*
 .parcel-cache/
 .eslintcache
 .stylelintcache
+.vercel/
 
 # ------------------------------------------------------------------------------
 # 7. Editor & IDE Directories
@@ -139,14 +148,40 @@ backend/codemate.db*
 *_prompt.txt
 *prompt*.txt
 *.scratch
+scratch/
 
 # ------------------------------------------------------------------------------
-# 12. Local Admin & Maintenance Scripts
+# 12. Local Maintenance Scripts & Utilities (Non-production)
 # ------------------------------------------------------------------------------
 backend/scripts/
 
 # ------------------------------------------------------------------------------
-# 13. Internal Phase Reports, Test Dumps & Screenshots
+# 13. Internal Phase Documentation, Reports, Specs & Screenshots
 # ------------------------------------------------------------------------------
 docs/
-*_test_results.json
+
+# ------------------------------------------------------------------------------
+# 14. Extension Test Automation & Debug Runner Scripts (Non-production)
+# Retain only production build scripts; exclude dev/debug test runners
+# ------------------------------------------------------------------------------
+extension/scripts/*
+!extension/scripts/build.cjs
+!extension/scripts/generate-icons.cjs
+scripts/*
+!scripts/build.cjs
+!scripts/generate-icons.cjs
+
+backend/alembic/versions/8c937f1b2d4e_phase_8_schema.py
+
+# ------------------------------------------------------------------------------
+# 14. Extension Test Automation & Debug Runner Scripts (Non-production)
+# Retain only production build scripts; exclude dev/debug test runners
+# ------------------------------------------------------------------------------
+extension/scripts/*
+!extension/scripts/build.cjs
+!extension/scripts/generate-icons.cjs
+scripts/*
+!scripts/build.cjs
+!scripts/generate-icons.cjs
+
+backend/alembic/versions/8c937f1b2d4e_phase_8_schema.py

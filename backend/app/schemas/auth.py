@@ -39,10 +39,10 @@ class UserResponse(BaseModel):
     id: str
     email: str
     display_name: str
-    role: str = "user"
-    auth_provider: str = "local"
+    role: str = "USER"
+    auth_provider: str = "LOCAL"
     email_verified: bool
-    account_status: str
+    account_status: str = "ACTIVE"
     created_at: datetime
     last_login_at: Optional[datetime] = None
 

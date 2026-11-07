@@ -20,8 +20,13 @@ class ResponseParsingError(Exception):
 def extract_json_string(raw_text: str) -> str:
     """
     Strips markdown code fences and isolates JSON payload from raw LLM output.
+    Safely handles None and empty inputs.
     """
-    text = raw_text.strip()
+    if raw_text is None:
+        raise ResponseParsingError("Empty or None response received from AI model.")
+    text = str(raw_text).strip()
+    if not text:
+        raise ResponseParsingError("Empty response received from AI model.")
 
     # Case 1: Markdown code block ```json ... ``` or ``` ... ```
     code_block_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
