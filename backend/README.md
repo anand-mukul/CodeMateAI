@@ -82,7 +82,7 @@ AI_PROVIDER=mock
 
 # To use Google Gemini:
 AI_PROVIDER=gemini
-AI_MODEL=gemini-2.0-flash
+AI_MODEL=gemini-3.5-flash
 AI_API_KEY=your_gemini_api_key_here
 
 # To use OpenAI or compatible providers (Groq, Together, DeepSeek, LocalAI):
