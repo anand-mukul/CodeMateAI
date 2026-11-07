@@ -24,20 +24,9 @@ def _resolve_database_url() -> tuple[str, bool]:
         return raw_url, True
 
     # Check asyncpg
-    has_asyncpg = False
-    try:
-        import asyncpg  # noqa: F401
-        has_asyncpg = True
-    except ImportError:
-        pass
-
-    # Check psycopg (v3 async)
-    has_psycopg = False
-    try:
-        import psycopg  # noqa: F401
-        has_psycopg = True
-    except ImportError:
-        pass
+    import importlib.util
+    has_asyncpg = importlib.util.find_spec("asyncpg") is not None
+    has_psycopg = importlib.util.find_spec("psycopg") is not None
 
     if has_asyncpg:
         return raw_url, False

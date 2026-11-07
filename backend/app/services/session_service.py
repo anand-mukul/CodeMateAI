@@ -76,34 +76,25 @@ class SessionService:
         # If user is logging in from a device that already has an active session, reuse/rotate that slot
         existing_device_session = next((s for s in active_sessions if s.device_id == device_id), None)
 
-        if not existing_device_session and len(active_sessions) >= allowed_limit:
-            # Gather device details for active sessions
-            summaries: List[ActiveSessionSummary] = []
-            for s in active_sessions:
-                dev_q = select(UserDevice).where(
-                    and_(UserDevice.user_id == user.id, UserDevice.device_id == s.device_id)
-                )
-                dev_res = await db.execute(dev_q)
-                dev = dev_res.scalars().first()
-                summaries.append(
-                    ActiveSessionSummary(
-                        id=s.id,
-                        device_id=s.device_id,
-                        last_seen_at=s.last_seen_at,
-                        device_name=dev.device_name if dev else "Unknown Device",
-                        browser_name=dev.browser_name if dev else "Browser",
-                    )
-                )
+        is_web = (
+            device_id in ("web_portal", "admin_web_portal")
+            or device_id.startswith("web_")
+        )
 
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "detail": f"Active session limit ({allowed_limit}) reached for your account.",
-                    "code": "SESSION_LIMIT_REACHED",
-                    "allowed_limit": allowed_limit,
-                    "active_sessions": [s.model_dump(mode="json") for s in summaries],
-                },
-            )
+        # Separate web portal sessions from extension sessions so web dashboard access never blocks extension
+        same_scope_sessions = [
+            s for s in active_sessions
+            if (s.device_id in ("web_portal", "admin_web_portal") or s.device_id.startswith("web_")) == is_web
+        ]
+
+        # If at or exceeding allowed limit for this scope, auto-revoke oldest active session
+        # This ensures users logging in with correct credentials are never locked out
+        if not existing_device_session and len(same_scope_sessions) >= allowed_limit:
+            sorted_sessions = sorted(same_scope_sessions, key=lambda s: s.last_seen_at or s.created_at)
+            sessions_to_revoke = sorted_sessions[: len(same_scope_sessions) - allowed_limit + 1]
+            for old_s in sessions_to_revoke:
+                old_s.session_status = "revoked"
+                old_s.revoked_at = now
 
         # If previous session on this device existed, revoke it
         if existing_device_session:

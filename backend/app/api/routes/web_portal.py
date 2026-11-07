@@ -10,487 +10,807 @@ from fastapi.responses import HTMLResponse
 router = APIRouter(tags=["Web Portal"])
 
 WEB_PORTAL_HTML = """<!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CodeMate AI — Enterprise Developer Platform & Cloud Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              50: '#eef2ff',
-              100: '#e0e7ff',
-              400: '#818cf8',
-              500: '#6366f1',
-              600: '#4f46e5',
-              700: '#4338ca',
-            },
-            dark: {
-              bg: '#080c15',
-              card: '#0f172a',
-              cardSub: '#0b1120',
-              border: '#1e293b',
-              borderSub: '#162032',
-            }
-          },
-          fontFamily: {
-            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
-            mono: ['JetBrains Mono', 'Fira Code', 'monospace']
-          }
-        }
+  <title>CodeMate — The Intelligent Coding Workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ==========================================================================
+       CodeMate Modern Silicon Valley Design System (Zero Tailwind CDN Dependency)
+       ========================================================================== */
+    :root {
+      --bg: #07090e;
+      --bg-surface: #0e131f;
+      --bg-card: rgba(14, 19, 31, 0.75);
+      --bg-card-hover: rgba(20, 27, 45, 0.85);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(99, 102, 241, 0.5);
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --primary-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --radius-sm: 0.5rem;
+      --radius-md: 0.75rem;
+      --radius-lg: 1rem;
+      --radius-xl: 1.25rem;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Ambient Background Glows */
+    .ambient-glow {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .glow-1 {
+      position: absolute;
+      top: -150px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 750px;
+      height: 450px;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.18) 0%, rgba(139, 92, 246, 0.08) 50%, transparent 70%);
+      filter: blur(80px);
+    }
+    .glow-2 {
+      position: absolute;
+      top: 600px;
+      right: -100px;
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+      filter: blur(90px);
+    }
+
+    /* Layout Containers */
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .flex { display: flex; }
+    .flex-col { flex-direction: column; }
+    .items-center { align-items: center; }
+    .items-start { align-items: flex-start; }
+    .justify-between { justify-content: space-between; }
+    .justify-center { justify-content: center; }
+    .gap-1 { gap: 0.25rem; }
+    .gap-2 { gap: 0.5rem; }
+    .gap-3 { gap: 0.75rem; }
+    .gap-4 { gap: 1rem; }
+    .gap-6 { gap: 1.5rem; }
+    .gap-8 { gap: 2rem; }
+    .flex-1 { flex: 1; }
+    .w-full { width: 100%; }
+
+    .grid { display: grid; }
+    .grid-2 { grid-template-columns: 1fr; }
+    .grid-3 { grid-template-columns: 1fr; }
+    .grid-4 { grid-template-columns: 1fr; }
+
+    @media (min-width: 768px) {
+      .grid-2 { grid-template-columns: repeat(2, 1fr); }
+      .grid-3 { grid-template-columns: repeat(3, 1fr); }
+      .grid-4 { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (min-width: 1024px) {
+      .grid-4 { grid-template-columns: repeat(4, 1fr); }
+      .split-hero {
+        display: grid;
+        grid-template-columns: 1.2fr 0.9fr;
+        gap: 2.5rem;
+        align-items: start;
       }
     }
-  </script>
-  <style>
-    @keyframes geminiGlow {
-      0%, 100% { opacity: 0.4; transform: scale(1); }
-      50% { opacity: 0.7; transform: scale(1.08); }
+
+    /* Glass Cards */
+    .glass-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 1.5rem;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .animate-gemini-glow {
-      animation: geminiGlow 8s ease-in-out infinite;
+    .glass-card:hover {
+      border-color: rgba(255, 255, 255, 0.15);
     }
-    .glass-panel {
-      background: rgba(15, 23, 42, 0.75);
+
+    /* Navigation */
+    header.navbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(7, 9, 14, 0.8);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid var(--border);
+      padding: 0.85rem 0;
     }
-    .glass-card {
-      background: rgba(11, 17, 32, 0.6);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.06);
+    .nav-links {
+      display: none;
+      gap: 1.75rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-muted);
     }
-    .gradient-border-btn {
-      position: relative;
-      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-      transition: all 0.2s ease;
+    @media (min-width: 768px) {
+      .nav-links { display: flex; }
     }
-    .gradient-border-btn:hover {
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+    .nav-links a:hover {
+      color: #fff;
+    }
+
+    /* Brand Logo */
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      text-decoration: none;
+      color: #fff;
+      font-weight: 700;
+      font-size: 1.125rem;
+      letter-spacing: -0.02em;
+    }
+    .logo-icon {
+      width: 2rem;
+      height: 2rem;
+      background: var(--primary-gradient);
+      border-radius: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-family: inherit;
+      font-size: 0.875rem;
+      font-weight: 600;
+      padding: 0.6rem 1.25rem;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      border: none;
+    }
+    .btn-primary {
+      background: var(--primary-gradient);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+    }
+    .btn-primary:hover {
       filter: brightness(1.1);
-      box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
     }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(255, 255, 255, 0.18);
+      color: #fff;
+    }
+    .btn-sm {
+      padding: 0.4rem 0.85rem;
+      font-size: 0.775rem;
+      border-radius: var(--radius-sm);
+    }
+
+    /* Badges & Pills */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      color: #a5b4fc;
+    }
+    .status-dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 9999px;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    /* Hero Typography */
+    .hero-title {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.035em;
+      line-height: 1.15;
+      color: #fff;
+      margin: 1rem 0 0.85rem;
+    }
+    @media (min-width: 768px) {
+      .hero-title { font-size: 3.25rem; }
+    }
+    .text-gradient {
+      background: linear-gradient(135deg, #a5b4fc 0%, #c084fc 50%, #f472b6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-sub {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 2rem;
+      max-width: 600px;
+    }
+
+    /* Forms */
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    .form-label {
+      display: block;
+      font-size: 0.775rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+    }
+    .form-input {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      background: #090d16;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      color: #fff;
+      font-size: 0.875rem;
+      font-family: inherit;
+      transition: all 0.15s ease;
+      outline: none;
+    }
+    .form-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+
+    /* Alert Banner */
+    .alert-banner {
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius-md);
+      font-size: 0.8125rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .alert-error {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+    }
+    .alert-success {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #6ee7b7;
+    }
+
+    /* Tabs */
+    .tab-bar {
+      display: flex;
+      padding: 0.25rem;
+      background: #080b12;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      margin-bottom: 1.25rem;
+      gap: 0.25rem;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 0.5rem;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-radius: var(--radius-sm);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .tab-btn.active {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+    }
+
+    /* Progress bar */
+    .progress-bar-bg {
+      width: 100%;
+      height: 0.5rem;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 9999px;
+      overflow: hidden;
+      margin: 0.5rem 0;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--primary-gradient);
+      border-radius: 9999px;
+      transition: width 0.3s ease;
+    }
+
+    .hidden { display: none !important; }
   </style>
 </head>
-<body class="min-h-screen bg-[#080c15] text-slate-100 font-sans selection:bg-indigo-600 selection:text-white flex flex-col justify-between relative overflow-x-hidden">
+<body>
 
-  <!-- Background Ambient Glows -->
-  <div class="fixed inset-0 pointer-none z-0 overflow-hidden pointer-events-none">
-    <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[750px] h-[450px] bg-gradient-to-tr from-indigo-600/20 via-purple-600/15 to-blue-600/10 rounded-full blur-[120px] animate-gemini-glow"></div>
-    <div class="absolute top-[600px] -right-40 w-[450px] h-[450px] bg-blue-600/10 rounded-full blur-[100px]"></div>
-    <div class="absolute bottom-10 -left-40 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[120px]"></div>
+  <!-- Ambient Glow Background -->
+  <div class="ambient-glow">
+    <div class="glow-1"></div>
+    <div class="glow-2"></div>
   </div>
 
-  <!-- Enterprise Navbar -->
-  <header class="sticky top-0 z-50 glass-panel border-b border-slate-800/80 px-6 lg:px-12 py-3.5 flex items-center justify-between">
-    <div class="flex items-center gap-3.5">
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-600/30">
-        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-        </svg>
-      </div>
-      <div>
-        <div class="flex items-center gap-2">
-          <span class="text-base font-bold tracking-tight text-white">CodeMate AI</span>
-          <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 uppercase tracking-wider">Cloud Platform</span>
+  <!-- Modern Navigation Bar -->
+  <header class="navbar">
+    <div class="container flex items-center justify-between">
+      <a href="/portal" class="brand-logo">
+        <div class="logo-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
         </div>
+        <span>CodeMate</span>
+      </a>
+
+      <nav class="nav-links">
+        <a href="#features">Capabilities</a>
+        <a href="#pricing">Pricing</a>
+        <a href="/pricing">Passes</a>
+        <a href="/docs" target="_blank">Documentation</a>
+      </nav>
+
+      <div class="flex items-center gap-3" id="navAuthArea">
+        <button onclick="scrollToAuth('signin')" class="btn btn-secondary btn-sm">Sign In</button>
+        <button onclick="scrollToAuth('signup')" class="btn btn-primary btn-sm">Get Started</button>
       </div>
-    </div>
-
-    <!-- Navigation Links -->
-    <nav class="hidden md:flex items-center gap-6 text-xs font-medium text-slate-300">
-      <a href="#features" class="hover:text-white transition-colors">Platform Capabilities</a>
-      <a href="/docs" target="_blank" class="hover:text-white transition-colors">API Reference</a>
-      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-        API Operational
-      </span>
-    </nav>
-
-    <!-- Auth Actions -->
-    <div class="flex items-center gap-3" id="navAuthArea">
-      <button onclick="scrollToAuth('signin')" class="text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition-colors">
-        Sign In
-      </button>
-      <button onclick="scrollToAuth('signup')" class="text-xs font-semibold px-3.5 py-1.5 rounded-lg gradient-border-btn text-white shadow-sm">
-        Get Started Free
-      </button>
     </div>
   </header>
 
-  <!-- MAIN VIEWPORT CONTAINER -->
-  <main class="relative z-10 flex-1 flex flex-col items-center">
+  <!-- Main View Area -->
+  <main class="container" style="flex: 1; padding-top: 3rem; padding-bottom: 4rem;">
 
-    <!-- ========================================== -->
-    <!-- VIEW 1: LANDING & HERO (LOGGED OUT STATE)   -->
-    <!-- ========================================== -->
-    <div id="landingView" class="w-full max-w-7xl px-6 lg:px-12 py-12 flex flex-col items-center gap-16">
-      
-      <!-- Hero Header -->
-      <div class="text-center max-w-3xl flex flex-col items-center gap-4">
-        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-950/60 border border-indigo-500/30 text-indigo-300 text-xs font-medium backdrop-blur-sm shadow-sm">
-          <span class="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
-          <span>Next-Generation Competitive Coding & Multi-File Auto-Pilot</span>
-        </div>
-        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.12]">
-          Autonomous AI for <span class="bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">Competitive Programming</span> & Web IDEs
-        </h1>
-        <p class="text-sm sm:text-base text-slate-400 max-w-2xl leading-relaxed">
-          Real-time problem comprehension, indentation-safe Monaco & Ace editor injection, sequential multi-file project synthesis, and 1-click test execution on CodeChef & beyond.
-        </p>
-
-        <!-- CTA Buttons -->
-        <div class="flex flex-wrap items-center justify-center gap-3.5 pt-2">
-          <button onclick="scrollToAuth('signup')" class="px-5 py-2.5 rounded-xl gradient-border-btn text-white text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-lg shadow-indigo-600/30">
-            <span>Create Developer Account</span>
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
-          </button>
-          <button onclick="scrollToAuth('signin')" class="px-4 py-2.5 rounded-xl glass-panel text-slate-200 hover:text-white text-xs sm:text-sm font-semibold transition-all">
-            Access Cloud Dashboard
-          </button>
-        </div>
-      </div>
-
-      <!-- Live Interactive Showcase & Auth Split -->
-      <div class="w-full grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+    <!-- ============================================================== -->
+    <!-- VIEW 1: LANDING & AUTH VIEW (LOGGED OUT)                       -->
+    <!-- ============================================================== -->
+    <div id="landingView">
+      <div class="split-hero">
         
-        <!-- Left: Interactive Product Showcase Mockup (7 Cols) -->
-        <div class="lg:col-span-7 glass-panel rounded-2xl p-5 border border-slate-800 shadow-2xl overflow-hidden flex flex-col gap-4">
-          <!-- Window Header -->
-          <div class="flex items-center justify-between pb-3 border-b border-slate-800/80">
-            <div class="flex items-center gap-2">
-              <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
-              <span class="w-3 h-3 rounded-full bg-amber-500/80"></span>
-              <span class="w-3 h-3 rounded-full bg-emerald-500/80"></span>
-              <span class="text-[11px] font-mono text-slate-400 ml-2">CodeChef Practice • StudentService.java</span>
-            </div>
-            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] font-mono text-emerald-400">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              Auto-Pilot Active
-            </div>
+        <!-- Left Column: Product Value & Showcase -->
+        <div>
+          <div class="pill">
+            <span class="status-dot"></span>
+            <span>Intelligent Browser Workspace</span>
           </div>
 
-          <!-- Code Preview Mock -->
-          <div class="bg-[#0b0f19] rounded-xl p-4 font-mono text-xs text-slate-300 leading-relaxed overflow-x-auto border border-slate-800/60">
-            <div class="text-slate-500">// ⚡ CodeMate AI Sequential Multi-File Intelligence (Spring Boot)</div>
-            <div class="text-purple-400 mt-1">@Service</div>
-            <div><span class="text-blue-400">public class</span> <span class="text-amber-300">StudentService</span> {</div>
-            <div class="pl-4 text-slate-400">// Constructor Injection & Stream Lookup</div>
-            <div class="pl-4"><span class="text-blue-400">public</span> Optional&lt;Student&gt; <span class="text-indigo-400">getByName</span>(String name) {</div>
-            <div class="pl-8 text-emerald-400">return students.stream()</div>
-            <div class="pl-12 text-emerald-400">.filter(s -&gt; s.getName().equalsIgnoreCase(name))</div>
-            <div class="pl-12 text-emerald-400">.findFirst();</div>
-            <div class="pl-4">}</div>
-            <div>}</div>
-          </div>
+          <h1 class="hero-title">
+            Write better code.<br>
+            <span class="text-gradient">Solve harder problems.</span>
+          </h1>
 
-          <!-- Live Terminal Output Strip -->
-          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
-            <div class="flex items-center gap-2 text-emerald-400 font-mono">
-              <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
-              <span>Build Success: 14/14 Unit Tests Passed (0.04s)</span>
+          <p class="hero-sub">
+            CodeMate connects seamlessly with your browser editors and practice environments to analyze logic, generate robust multi-file architectures, and debug solutions in real time.
+          </p>
+
+          <!-- Feature Cards Grid -->
+          <div class="flex flex-col gap-4" style="margin-top: 1.5rem; margin-bottom: 2rem;">
+            <div class="glass-card" style="padding: 1rem 1.25rem;">
+              <div class="flex items-center gap-3">
+                <div style="width: 2.25rem; height: 2.25rem; border-radius: 0.5rem; background: rgba(99, 102, 241, 0.15); display: flex; align-items: center; justify-content: center; color: #a5b4fc;">
+                  ⚡
+                </div>
+                <div>
+                  <h3 style="font-size: 0.925rem; font-weight: 600; color: #fff;">Instant Algorithmic Comprehension</h3>
+                  <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem;">
+                    Breaks down complex problem statements, detects edge cases, and optimizes time & space complexity.
+                  </p>
+                </div>
+              </div>
             </div>
-            <span class="text-[11px] text-slate-400 font-mono">Status: Accepted (100 pts)</span>
+
+            <div class="glass-card" style="padding: 1rem 1.25rem;">
+              <div class="flex items-center gap-3">
+                <div style="width: 2.25rem; height: 2.25rem; border-radius: 0.5rem; background: rgba(139, 92, 246, 0.15); display: flex; align-items: center; justify-content: center; color: #c084fc;">
+                  🧩
+                </div>
+                <div>
+                  <h3 style="font-size: 0.925rem; font-weight: 600; color: #fff;">Multi-File Project Synthesis</h3>
+                  <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem;">
+                    Synthesizes production-ready Spring Boot services, React components, and polyglot codebases cleanly.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="glass-card" style="padding: 1rem 1.25rem;">
+              <div class="flex items-center gap-3">
+                <div style="width: 2.25rem; height: 2.25rem; border-radius: 0.5rem; background: rgba(16, 185, 129, 0.15); display: flex; align-items: center; justify-content: center; color: #6ee7b7;">
+                  🔒
+                </div>
+                <div>
+                  <h3 style="font-size: 0.925rem; font-weight: 600; color: #fff;">Hardware-Bound Privacy</h3>
+                  <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem;">
+                    Your code remains private. Cryptographically verified sessions link directly to your Chrome extension.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Right: Modern SaaS Auth Card (5 Cols) -->
-        <div id="authContainer" class="lg:col-span-5 glass-panel rounded-2xl p-6 border border-slate-800 shadow-2xl relative">
-          <div class="text-center mb-5">
-            <h2 class="text-lg font-bold text-white tracking-tight" id="authTitle">Sign in to CodeMate AI</h2>
-            <p class="text-xs text-slate-400 mt-1" id="authSubtitle">Manage your extension access, devices, and AI quotas</p>
+        <!-- Right Column: Authentication Card -->
+        <div id="authContainer" class="glass-card" style="padding: 2rem; border-color: rgba(99, 102, 241, 0.25); box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.7);">
+          <div style="text-align: center; margin-bottom: 1.5rem;">
+            <h2 id="authTitle" style="font-size: 1.25rem; font-weight: 700; color: #fff; letter-spacing: -0.02em;">Welcome to CodeMate</h2>
+            <p id="authSubtitle" style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 0.35rem;">Sign in or create your account to continue</p>
           </div>
 
-          <!-- Auth Tab Switcher -->
-          <div class="flex p-1 bg-slate-950/80 rounded-xl border border-slate-800 text-xs mb-4">
-            <button id="tabSignin" onclick="switchAuthTab('signin')" class="flex-1 py-1.5 font-semibold rounded-lg bg-indigo-600 text-white shadow-sm transition-all">Sign In</button>
-            <button id="tabSignup" onclick="switchAuthTab('signup')" class="flex-1 py-1.5 font-semibold rounded-lg text-slate-400 hover:text-slate-200 transition-all">Create Account</button>
+          <!-- Auth Switcher -->
+          <div class="tab-bar">
+            <button id="tabSignin" class="tab-btn active" onclick="switchAuthTab('signin')">Sign In</button>
+            <button id="tabSignup" class="tab-btn" onclick="switchAuthTab('signup')">Create Account</button>
           </div>
 
-          <!-- Alert Display -->
-          <div id="authAlert" class="hidden mb-4 p-3 rounded-xl text-xs flex items-center gap-2"></div>
+          <!-- Alert Display (with robust error parsing) -->
+          <div id="authAlert" class="alert-banner hidden"></div>
 
-          <!-- Auth Form -->
-          <form id="authForm" onsubmit="handleAuthSubmit(event)" class="space-y-3.5">
-            <div id="nameField" class="hidden">
-              <label class="block text-[11px] font-medium text-slate-300 mb-1">Developer Full Name</label>
-              <input type="text" id="inputName" placeholder="Ada Lovelace" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all">
+          <!-- Form -->
+          <form id="authForm" onsubmit="handleAuthSubmit(event)">
+            <div id="nameField" class="form-group hidden">
+              <label class="form-label">Full Name</label>
+              <input type="text" id="inputName" placeholder="Ada Lovelace" class="form-input">
             </div>
 
-            <div>
-              <label class="block text-[11px] font-medium text-slate-300 mb-1">Email Address</label>
-              <input type="email" id="inputEmail" required placeholder="mukulanand@gmail.com" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all">
+            <div class="form-group">
+              <label class="form-label">Email Address</label>
+              <input type="email" id="inputEmail" required placeholder="you@domain.com" class="form-input">
             </div>
 
-            <div>
-              <div class="flex items-center justify-between mb-1">
-                <label class="block text-[11px] font-medium text-slate-300">Password</label>
-                <span class="text-[10px] text-slate-500 hover:text-slate-300 cursor-pointer" onclick="togglePasswordVisibility()">Show</span>
+            <div class="form-group">
+              <div class="flex items-center justify-between" style="margin-bottom: 0.35rem;">
+                <label class="form-label" style="margin-bottom: 0;">Password</label>
+                <span onclick="togglePasswordVisibility()" style="font-size: 0.725rem; color: var(--text-dim); cursor: pointer;">Show</span>
               </div>
-              <input type="password" id="inputPassword" required placeholder="••••••••" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all">
+              <input type="password" id="inputPassword" required placeholder="••••••••" class="form-input">
             </div>
 
-            <button type="submit" id="submitBtn" class="w-full py-2.5 px-4 rounded-xl gradient-border-btn text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all active:scale-[0.98]">
-              Sign In to Cloud Account
+            <button type="submit" id="submitBtn" class="btn btn-primary w-full" style="padding: 0.75rem; margin-top: 0.5rem;">
+              Continue with Email ➔
             </button>
           </form>
 
-          <!-- Quick Evaluator Sign In Pill -->
-          <div class="mt-4 pt-3.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-            <span>Testing the platform?</span>
-            <button onclick="fillDemoCredentials()" class="font-medium text-indigo-400 hover:text-indigo-300 transition-colors">
-              Auto-Fill Admin Credentials ➔
-            </button>
-          </div>
+          <p style="text-align: center; font-size: 0.75rem; color: var(--text-dim); margin-top: 1.25rem;">
+            By continuing, you agree to CodeMate's Terms of Service and Privacy Policy.
+          </p>
         </div>
+
       </div>
 
-      <!-- Platform Features Bento Grid -->
-      <div id="features" class="w-full flex flex-col gap-6 pt-8 border-t border-slate-800/80">
-        <div class="text-center max-w-xl mx-auto">
-          <h2 class="text-2xl font-bold text-white tracking-tight">Built for Engineering Excellence</h2>
-          <p class="text-xs text-slate-400 mt-1">Transform competitive coding from tedious boilerplate into intelligent execution.</p>
+      <!-- Pricing Comparison Section -->
+      <div id="pricing" style="margin-top: 6rem;">
+        <div style="text-align: center; max-width: 600px; margin: 0 auto 3rem;">
+          <h2 style="font-size: 2rem; font-weight: 800; color: #fff; letter-spacing: -0.03em;">Simple, transparent pricing</h2>
+          <p style="font-size: 0.95rem; color: var(--text-muted); margin-top: 0.5rem;">
+            Affordable daily and weekly passes. No monthly lock-ins, pay only when you code.
+          </p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <!-- Bento 1 -->
-          <div class="glass-card p-5 rounded-2xl flex flex-col gap-2.5 hover:border-slate-700 transition-all">
-            <div class="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold">⚡</div>
-            <h3 class="text-sm font-semibold text-white">1-Click Auto-Pilot</h3>
-            <p class="text-xs text-slate-400 leading-relaxed">
-              Analyzes problem requirements, completes missing components, executes compilation, and verifies against judge test cases automatically.
-            </p>
+        <div class="grid grid-3 gap-6">
+          <!-- Free Tier -->
+          <div class="glass-card flex flex-col justify-between" style="padding: 1.75rem;">
+            <div>
+              <div class="flex items-center justify-between">
+                <span style="font-weight: 700; color: #fff; font-size: 1.1rem;">Free Tier</span>
+                <span class="pill" style="font-size: 0.7rem;">Forever</span>
+              </div>
+              <div style="margin: 1rem 0;">
+                <span style="font-size: 2.25rem; font-weight: 800; color: #fff;">₹0</span>
+              </div>
+              <p style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+                Essential code analysis and manual solution generation.
+              </p>
+              <ul style="list-style: none; display: flex; flex-direction: column; gap: 0.65rem; font-size: 0.8125rem; color: var(--text-muted);">
+                <li>✓ 5 AI requests / day</li>
+                <li>✓ 1 registered device</li>
+                <li>✓ Problem analysis & logic</li>
+                <li>✓ Manual copy-paste output</li>
+              </ul>
+            </div>
+            <button onclick="scrollToAuth('signup')" class="btn btn-secondary w-full" style="margin-top: 1.5rem;">Get Started Free</button>
           </div>
 
-          <!-- Bento 2 -->
-          <div class="glass-card p-5 rounded-2xl flex flex-col gap-2.5 hover:border-slate-700 transition-all">
-            <div class="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold">📋</div>
-            <h3 class="text-sm font-semibold text-white">Smart Clipboard</h3>
-            <p class="text-xs text-slate-400 leading-relaxed">
-              Native editor buffer synchronization. Automatically extracts code, fixes indentation staircase issues, and supports zero-friction paste.
-            </p>
+          <!-- Core Pass (₹21/day) -->
+          <div class="glass-card flex flex-col justify-between" style="padding: 1.75rem; border-color: rgba(16, 185, 129, 0.4); position: relative;">
+            <div style="position: absolute; top: -0.75rem; left: 50%; transform: translateX(-50%); background: var(--success); color: #042f2e; font-size: 0.7rem; font-weight: 800; padding: 0.2rem 0.75rem; border-radius: 9999px; text-transform: uppercase;">
+              Most Popular
+            </div>
+            <div>
+              <div class="flex items-center justify-between">
+                <span style="font-weight: 700; color: #fff; font-size: 1.1rem;">Core Pass</span>
+                <span class="pill" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3); color: #6ee7b7;">Day Pass</span>
+              </div>
+              <div style="margin: 1rem 0;">
+                <span style="font-size: 2.25rem; font-weight: 800; color: #fff;">₹21</span>
+                <span style="font-size: 0.875rem; color: var(--text-muted);"> / day</span>
+              </div>
+              <p style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+                Power pass for contest rounds, problem solving, and complex optimizations.
+              </p>
+              <ul style="list-style: none; display: flex; flex-direction: column; gap: 0.65rem; font-size: 0.8125rem; color: var(--text-muted);">
+                <li>✓ <strong>25 AI requests / day</strong></li>
+                <li>✓ 1 registered device</li>
+                <li>✓ Optimal code generation & explanations</li>
+                <li>✓ Code optimizer & bug fixer</li>
+              </ul>
+            </div>
+            <a href="/pricing" class="btn btn-primary w-full" style="margin-top: 1.5rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">Get Core Pass ➔</a>
           </div>
 
-          <!-- Bento 3 -->
-          <div class="glass-card p-5 rounded-2xl flex flex-col gap-2.5 hover:border-slate-700 transition-all">
-            <div class="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold">📦</div>
-            <h3 class="text-sm font-semibold text-white">EPC-PFS Architecture</h3>
-            <p class="text-xs text-slate-400 leading-relaxed">
-              Topological sequential solving for Spring Boot, React, and polyglot multi-file structures. Preserves interfaces and prevents file corruption.
-            </p>
-          </div>
-
-          <!-- Bento 4 -->
-          <div class="glass-card p-5 rounded-2xl flex flex-col gap-2.5 hover:border-slate-700 transition-all">
-            <div class="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">🛡️</div>
-            <h3 class="text-sm font-semibold text-white">Privacy & BYOK</h3>
-            <p class="text-xs text-slate-400 leading-relaxed">
-              Zero storage of complete source code or user prompts. Flexible BYOK model support across Google Gemini, Claude, and OpenAI.
-            </p>
+          <!-- AutoPilot Pass (₹61/week) -->
+          <div class="glass-card flex flex-col justify-between" style="padding: 1.75rem; border-color: rgba(99, 102, 241, 0.4);">
+            <div>
+              <div class="flex items-center justify-between">
+                <span style="font-weight: 700; color: #fff; font-size: 1.1rem;">AutoPilot Pass</span>
+                <span class="pill" style="font-size: 0.7rem;">Week Pass</span>
+              </div>
+              <div style="margin: 1rem 0;">
+                <span style="font-size: 2.25rem; font-weight: 800; color: #fff;">₹61</span>
+                <span style="font-size: 0.875rem; color: var(--text-muted);"> / week</span>
+              </div>
+              <p style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+                Full autonomous capabilities with 1-click editor injection.
+              </p>
+              <ul style="list-style: none; display: flex; flex-direction: column; gap: 0.65rem; font-size: 0.8125rem; color: var(--text-muted);">
+                <li>✓ <strong>100 AI requests / day</strong></li>
+                <li>✓ 1-click in-editor code injection</li>
+                <li>✓ Smart Practice Assistant</li>
+                <li>✓ Custom BYOK (Gemini, Claude, OpenAI)</li>
+              </ul>
+            </div>
+            <a href="/pricing" class="btn btn-primary w-full" style="margin-top: 1.5rem;">Get AutoPilot Pass ➔</a>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ========================================== -->
-    <!-- VIEW 2: LOGGED IN SAAS DASHBOARD           -->
-    <!-- ========================================== -->
-    <div id="dashView" class="hidden w-full max-w-6xl px-6 lg:px-12 py-10 flex flex-col gap-8 animate-fade-in">
-      
-      <!-- User Profile Header Strip -->
-      <div class="glass-panel rounded-2xl p-6 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <!-- ============================================================== -->
+    <!-- VIEW 2: LOGGED-IN SAAS DASHBOARD VIEW                          -->
+    <!-- ============================================================== -->
+    <div id="dashView" class="hidden">
+      <!-- Profile Header Bar -->
+      <div class="glass-card flex items-center justify-between" style="padding: 1.25rem 1.75rem; margin-bottom: 2rem;">
         <div class="flex items-center gap-4">
-          <div id="userAvatar" class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-xl font-bold text-white shadow-lg shadow-indigo-600/30">
+          <div id="userAvatar" style="width: 3rem; height: 3rem; border-radius: 9999px; background: var(--primary-gradient); display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: 700; color: #fff; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);">
             M
           </div>
           <div>
             <div class="flex items-center gap-2">
-              <h2 class="text-xl font-bold text-white tracking-tight" id="userDisplayName">Developer</h2>
-              <span id="userRoleBadge" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase">USER</span>
-              <span id="userVerifiedBadge" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Verified</span>
+              <h2 id="userDisplayName" style="font-size: 1.15rem; font-weight: 700; color: #fff;">Mukul Anand</h2>
+              <span id="userRoleBadge" class="pill" style="font-size: 0.65rem;">USER</span>
+              <span id="userVerifiedBadge" class="pill" style="font-size: 0.65rem; cursor: pointer;">✉️ Unverified [Verify Now]</span>
             </div>
-            <p class="text-xs text-slate-400 mt-0.5" id="userEmailDisplay">dev@example.com</p>
+            <p id="userEmailDisplay" style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 0.15rem;">mukulanand.dev@gmail.com</p>
           </div>
         </div>
 
-        <div class="flex items-center gap-2.5">
-          <button onclick="handleLogout()" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-red-950/40 text-slate-300 hover:text-red-300 border border-slate-800 text-xs font-semibold transition-colors">
-            Sign Out
-          </button>
+        <button onclick="handleLogout()" class="btn btn-secondary btn-sm">
+          Sign Out
+        </button>
+      </div>
+
+      <!-- 4-Card SaaS Metrics Grid -->
+      <div class="grid grid-4 gap-6" style="margin-bottom: 2rem;">
+        <!-- Card 1: AI Daily Quota -->
+        <div class="glass-card flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span style="font-size: 0.775rem; font-weight: 500; color: var(--text-muted);">AI Requests Today</span>
+            <span class="status-dot"></span>
+          </div>
+          <div style="margin: 1.25rem 0;">
+            <div id="quotaMetric" style="font-size: 1.75rem; font-weight: 800; color: #fff;">0 / 5</div>
+            <div class="progress-bar-bg">
+              <div id="quotaBar" class="progress-bar-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <span style="font-size: 0.725rem; color: var(--text-dim);">Resets daily at 00:00 UTC</span>
+        </div>
+
+        <!-- Card 2: Current Subscription -->
+        <div class="glass-card flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span style="font-size: 0.775rem; font-weight: 500; color: var(--text-muted);">Subscription Plan</span>
+            <span class="pill" style="font-size: 0.65rem; background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.3);">Active</span>
+          </div>
+          <div style="margin: 1.25rem 0;">
+            <div id="planMetric" style="font-size: 1.35rem; font-weight: 800; color: #fff;">Free Tier</div>
+            <p id="planSubtext" style="font-size: 0.775rem; color: var(--text-muted); margin-top: 0.25rem;">5 requests/day • 1 device</p>
+          </div>
+          <a href="/pricing" class="btn btn-secondary btn-sm" style="text-align: center;">Upgrade Plan ➔</a>
+        </div>
+
+        <!-- Card 3: Registered Devices -->
+        <div class="glass-card flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span style="font-size: 0.775rem; font-weight: 500; color: var(--text-muted);">Authorized Devices</span>
+            <span id="deviceCount" class="pill" style="font-size: 0.65rem;">0 / 1</span>
+          </div>
+          <div style="margin: 1.25rem 0;">
+            <div id="primaryDeviceName" style="font-size: 1.05rem; font-weight: 700; color: #fff;">No Extension Linked</div>
+            <p id="primaryDeviceStatus" style="font-size: 0.775rem; color: var(--text-dim); margin-top: 0.25rem;">Paste token in extension to link</p>
+          </div>
+          <span style="font-size: 0.725rem; color: var(--text-dim);">Cryptographically verified</span>
+        </div>
+
+        <!-- Card 4: Platform Engine -->
+        <div class="glass-card flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span style="font-size: 0.775rem; font-weight: 500; color: var(--text-muted);">Cloud Status</span>
+            <span class="pill" style="font-size: 0.65rem; background: rgba(99, 102, 241, 0.15); color: #a5b4fc; border-color: rgba(99, 102, 241, 0.3);">Connected</span>
+          </div>
+          <div style="margin: 1.25rem 0;">
+            <div style="font-size: 1.05rem; font-weight: 700; color: #fff;">API Gateway Online</div>
+            <p style="font-size: 0.775rem; color: var(--text-dim); margin-top: 0.25rem;" id="backendEndpointDisplay">Render Production</p>
+          </div>
+          <a href="/docs" target="_blank" class="btn btn-secondary btn-sm" style="text-align: center;">View API Docs ➔</a>
         </div>
       </div>
 
-      <!-- KPI Metrics Grid -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <!-- Metric 1: Daily AI Quota -->
-        <div class="glass-card p-5 rounded-2xl border border-slate-800 flex flex-col justify-between">
-          <div class="flex items-center justify-between text-xs text-slate-400">
-            <span>Daily AI Solves</span>
-            <span class="text-indigo-400 font-mono">⚡ Active</span>
-          </div>
-          <div class="my-3">
-            <div class="text-2xl font-bold text-white font-mono" id="quotaMetric">0 / 500</div>
-            <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
-              <div id="quotaBar" class="bg-indigo-500 h-full rounded-full transition-all" style="width: 15%"></div>
-            </div>
-          </div>
-          <span class="text-[10px] text-slate-500">Resets daily at 00:00 UTC</span>
-        </div>
-
-        <!-- Metric 2: Subscription Tier -->
-        <div class="glass-card p-5 rounded-2xl border border-slate-800 flex flex-col justify-between">
-          <div class="flex items-center justify-between text-xs text-slate-400">
-            <span>Subscription Tier</span>
-            <span class="text-emerald-400 text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10">Active</span>
-          </div>
-          <div class="my-3">
-            <div class="text-xl font-bold text-white" id="planMetric">Developer Tier</div>
-            <p class="text-xs text-slate-400 mt-0.5" id="planSubtext">500 req/day • 5 devices</p>
-          </div>
-          <button onclick="alert('Subscription tier is active on your developer account.')" class="text-left text-[11px] font-semibold text-indigo-400 hover:text-indigo-300">
-            Manage Plan Details ➔
-          </button>
-        </div>
-
-        <!-- Metric 3: Active Devices -->
-        <div class="glass-card p-5 rounded-2xl border border-slate-800 flex flex-col justify-between">
-          <div class="flex items-center justify-between text-xs text-slate-400">
-            <span>Authorized Devices</span>
-            <span class="text-blue-400 font-mono" id="deviceCount">0 / 1</span>
-          </div>
-          <div class="my-3">
-            <div class="text-sm font-semibold text-slate-200" id="primaryDeviceName">No Extension Linked</div>
-            <p class="text-[11px] text-slate-500 mt-0.5" id="primaryDeviceStatus">Paste token in extension to link</p>
-          </div>
-          <span class="text-[10px] text-slate-500">Hardware Bound</span>
-        </div>
-
-        <!-- Metric 4: Platform Status -->
-        <div class="glass-card p-5 rounded-2xl border border-slate-800 flex flex-col justify-between">
-          <div class="flex items-center justify-between text-xs text-slate-400">
-            <span>Extension Cloud Sync</span>
-            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          </div>
-          <div class="my-3">
-            <div class="text-sm font-semibold text-white">Live Extension Linked</div>
-            <p class="text-[11px] text-slate-400 mt-0.5">Session Token Synchronized</p>
-          </div>
-          <span class="text-[10px] text-emerald-400">Ready for Autonomous Execution</span>
-        </div>
-      </div>
-
-      <!-- Token Synchronization & Extension Integration Card -->
-      <div class="glass-panel rounded-2xl p-6 border border-slate-800 flex flex-col gap-4">
-        <div class="flex items-center justify-between">
+      <!-- Prominent Chrome Extension Session Token Card -->
+      <div class="glass-card" style="padding: 1.75rem; margin-bottom: 2rem; border-color: rgba(99, 102, 241, 0.3); background: rgba(14, 19, 31, 0.9);">
+        <div class="flex items-center justify-between" style="flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
           <div>
-            <h3 class="text-sm font-bold text-white flex items-center gap-2">
-              <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
-              <span>Chrome Extension Session Token</span>
-            </h3>
-            <p class="text-xs text-slate-400 mt-0.5">Your extension automatically syncs this token, or you can copy it manually:</p>
+            <div class="flex items-center gap-2">
+              <span style="font-size: 1.25rem;">🔑</span>
+              <h3 style="font-size: 1.05rem; font-weight: 700; color: #fff;">Link CodeMate Chrome Extension</h3>
+            </div>
+            <p style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 0.25rem;">
+              Copy your secure session token below and paste it into the CodeMate extension sidepanel to log in instantly without passwords:
+            </p>
           </div>
-          <button onclick="copyToken()" id="copyTokenBtn" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors">
-            <span>Copy Session Token</span>
+          <button onclick="copyToken()" id="copyTokenBtn" class="btn btn-primary btn-sm">
+            📋 Copy Session Token
           </button>
         </div>
-        <div class="relative">
-          <input type="text" id="tokenDisplay" readonly class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl font-mono text-[11px] text-slate-300 selection:bg-indigo-600 select-all">
+
+        <input type="text" id="tokenDisplay" readonly class="form-input" style="font-family: 'JetBrains Mono', monospace; font-size: 0.775rem; color: #a5b4fc; background: #060910; cursor: pointer;" onclick="copyToken()" />
+
+        <!-- 3-Step Setup Helper -->
+        <div class="grid grid-3 gap-4" style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border);">
+          <div style="font-size: 0.775rem; color: var(--text-muted);">
+            <strong style="color: #fff; display: block; margin-bottom: 0.25rem;">1. Copy Token</strong>
+            Click the Copy button above to copy your session key.
+          </div>
+          <div style="font-size: 0.775rem; color: var(--text-muted);">
+            <strong style="color: #fff; display: block; margin-bottom: 0.25rem;">2. Open Extension</strong>
+            Open CodeMate in Chrome & select the <strong>[Paste Token]</strong> tab.
+          </div>
+          <div style="font-size: 0.775rem; color: var(--text-muted);">
+            <strong style="color: #fff; display: block; margin-bottom: 0.25rem;">3. Connect</strong>
+            Click <strong>Link Extension</strong> to immediately sync your session.
+          </div>
         </div>
       </div>
 
-      <!-- Feature Requests & Feedback Section -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <!-- Left: Submit Feedback / Feature Request -->
-        <div class="glass-panel rounded-2xl p-6 border border-slate-800 flex flex-col gap-4">
-          <h3 class="text-sm font-bold text-white flex items-center gap-2">
-            <span>💡 Submit Feature Request or Feedback</span>
-          </h3>
-          <p class="text-xs text-slate-400">Help shape the future of CodeMate AI. What capability should we build next?</p>
-          
-          <form onsubmit="handleFeatureRequest(event)" class="space-y-3">
-            <div>
-              <label class="block text-[11px] font-medium text-slate-300 mb-1">Request Title</label>
-              <input type="text" id="frTitle" required placeholder="e.g. Support LeetCode Contest Mode" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500">
-            </div>
-            <div>
-              <label class="block text-[11px] font-medium text-slate-300 mb-1">Description / Use Case</label>
-              <textarea id="frDesc" rows="3" required placeholder="Describe how this feature improves your workflow..." class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"></textarea>
-            </div>
-            <button type="submit" id="frSubmitBtn" class="px-4 py-2 rounded-xl gradient-border-btn text-white text-xs font-semibold">
-              Submit Request
-            </button>
-          </form>
-        </div>
+      <!-- Feature Requests & Feedback -->
+      <div class="glass-card" style="padding: 1.75rem;">
+        <h3 style="font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: 0.5rem;">💡 Submit Feedback or Feature Request</h3>
+        <p style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+          Have an idea or need support for a specific coding platform? Let our engineering team know directly.
+        </p>
 
-        <!-- Right: Support & Platform Diagnostics -->
-        <div class="glass-panel rounded-2xl p-6 border border-slate-800 flex flex-col justify-between gap-4">
-          <div>
-            <h3 class="text-sm font-bold text-white flex items-center gap-2">
-              <span>🛠️ Customer Support & Health</span>
-            </h3>
-            <p class="text-xs text-slate-400 mt-1">Need help with an integration or experiencing an unexpected error?</p>
-            
-            <div class="mt-4 p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
-              <div class="flex items-center justify-between">
-                <span class="text-slate-400">Backend API Endpoint</span>
-                <span class="font-mono text-slate-300" id="backendEndpointDisplay">https://codemate-backend-wsi1.onrender.com</span>
-              </div>
-              <div class="flex items-center justify-between">
-                <span class="text-slate-400">Active AI Model</span>
-                <span class="font-mono text-emerald-400">Gemini 2.5 Flash</span>
-              </div>
-              <div class="flex items-center justify-between">
-                <span class="text-slate-400">Multi-File Engine</span>
-                <span class="font-mono text-indigo-400">EPC-PFS v2</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
-            <span class="text-slate-500">Direct Support Available</span>
-            <a href="/docs" target="_blank" class="text-indigo-400 hover:text-indigo-300 font-medium">Explore Documentation ➔</a>
-          </div>
-        </div>
+        <form onsubmit="handleFeatureRequest(event)" class="flex flex-col gap-3">
+          <input type="text" id="frTitle" required placeholder="Short summary of request..." class="form-input">
+          <textarea id="frDesc" rows="3" required placeholder="Describe what you would like to see in CodeMate..." class="form-input" style="resize: vertical;"></textarea>
+          <button type="submit" class="btn btn-primary" style="align-self: flex-start;">
+            Send Feedback
+          </button>
+        </form>
       </div>
     </div>
+
   </main>
 
-  <!-- Clean Enterprise Footer -->
-  <footer class="relative z-10 border-t border-slate-800/80 bg-slate-950/60 backdrop-blur-md px-6 lg:px-12 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-    <div class="flex items-center gap-2">
-      <span class="font-semibold text-slate-400">CodeMate AI</span>
-      <span>•</span>
-      <span>Enterprise Developer Intelligence Platform</span>
-    </div>
-    <div class="flex items-center gap-5">
-      <a href="/docs" target="_blank" class="hover:text-slate-400 transition-colors">API Docs</a>
-      <a href="#features" class="hover:text-slate-400 transition-colors">Platform Features</a>
-      <a href="https://github.com" target="_blank" class="hover:text-slate-400 transition-colors">GitHub</a>
-      <span>© 2026 CodeMate AI. All rights reserved.</span>
+  <!-- Clean Minimal Footer -->
+  <footer style="border-top: 1px solid var(--border); padding: 1.5rem 0; background: rgba(7, 9, 14, 0.6); font-size: 0.8rem; color: var(--text-dim);">
+    <div class="container flex items-center justify-between" style="flex-wrap: wrap; gap: 1rem;">
+      <div class="flex items-center gap-2">
+        <span style="font-weight: 600; color: var(--text-muted);">CodeMate</span>
+        <span>•</span>
+        <span>The Intelligent Coding Workspace</span>
+      </div>
+      <div class="flex items-center gap-4">
+        <a href="/pricing" style="color: var(--text-muted); text-decoration: none;">Pricing</a>
+        <a href="/docs" target="_blank" style="color: var(--text-muted); text-decoration: none;">API</a>
+        <span>© 2026 CodeMate Inc.</span>
+      </div>
     </div>
   </footer>
 
-  <!-- CLIENT-SIDE SCRIPTING -->
+  <!-- Client-Side SaaS Orchestration Logic -->
   <script>
     let currentAuthMode = 'signin';
-    let cachedToken = localStorage.getItem('codemate_web_token');
+    let cachedToken = null;
 
-    window.addEventListener('DOMContentLoaded', () => {
-      if (cachedToken) {
-        loadProfile(cachedToken);
+    // Robust error message parser: handles string, dictionary, or array
+    function parseErrorMessage(data, fallback = 'Authentication failed. Please check credentials.') {
+      if (!data) return fallback;
+      if (typeof data.detail === 'string') return data.detail;
+      if (data.detail && typeof data.detail === 'object') {
+        return data.detail.detail || data.detail.message || data.detail.code || JSON.stringify(data.detail);
+      }
+      if (typeof data.message === 'string') return data.message;
+      return fallback;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const endpointEl = document.getElementById('backendEndpointDisplay');
+      if (endpointEl) endpointEl.textContent = window.location.origin;
+
+      const savedToken = localStorage.getItem('codemate_web_token');
+      if (savedToken) {
+        cachedToken = savedToken;
+        loadProfile(savedToken);
+      } else {
+        showLandingView();
       }
     });
 
-    function scrollToAuth(mode = 'signin') {
+    function scrollToAuth(mode) {
       switchAuthTab(mode);
       const el = document.getElementById('authContainer');
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
     }
 
     function switchAuthTab(mode) {
@@ -504,28 +824,22 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
 
       if (mode === 'signup') {
         nameField.classList.remove('hidden');
-        authTitle.textContent = 'Create Developer Account';
-        submitBtn.textContent = 'Register Developer Account';
-        tabSignup.className = 'flex-1 py-1.5 font-semibold rounded-lg bg-indigo-600 text-white shadow-sm transition-all';
-        tabSignin.className = 'flex-1 py-1.5 font-semibold rounded-lg text-slate-400 hover:text-slate-200 transition-all';
+        authTitle.textContent = 'Create your account';
+        submitBtn.textContent = 'Create Free Account ➔';
+        tabSignup.classList.add('active');
+        tabSignin.classList.remove('active');
       } else {
         nameField.classList.add('hidden');
-        authTitle.textContent = 'Sign in to CodeMate AI';
-        submitBtn.textContent = 'Sign In to Cloud Account';
-        tabSignin.className = 'flex-1 py-1.5 font-semibold rounded-lg bg-indigo-600 text-white shadow-sm transition-all';
-        tabSignup.className = 'flex-1 py-1.5 font-semibold rounded-lg text-slate-400 hover:text-slate-200 transition-all';
+        authTitle.textContent = 'Welcome to CodeMate';
+        submitBtn.textContent = 'Sign In to CodeMate ➔';
+        tabSignin.classList.add('active');
+        tabSignup.classList.remove('active');
       }
     }
 
     function togglePasswordVisibility() {
       const input = document.getElementById('inputPassword');
       input.type = input.type === 'password' ? 'text' : 'password';
-    }
-
-    function fillDemoCredentials() {
-      document.getElementById('inputEmail').value = 'mukulanand@gmail.com';
-      document.getElementById('inputPassword').value = 'Password123!';
-      switchAuthTab('signin');
     }
 
     async function handleAuthSubmit(e) {
@@ -536,8 +850,8 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       const name = document.getElementById('inputName').value.trim();
 
       const endpoint = currentAuthMode === 'signup' ? '/api/auth/register' : '/api/auth/login';
-      const payload = currentAuthMode === 'signup' 
-        ? { email, password, display_name: name || undefined } 
+      const payload = currentAuthMode === 'signup'
+        ? { email, password, display_name: name || undefined }
         : { email, password, device_id: 'web_portal', device_name: 'Web Dashboard', browser_name: 'Web Portal' };
 
       try {
@@ -546,8 +860,11 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Authentication failed');
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(parseErrorMessage(data));
+        }
 
         const token = data.access_token || data.tokens?.access_token;
         if (token) {
@@ -555,7 +872,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           cachedToken = token;
           loadProfile(token);
         } else if (currentAuthMode === 'signup') {
-          showAlert('Account created! Please sign in with your credentials.', false);
+          showAlert('Account created successfully! Please sign in.', false);
           switchAuthTab('signin');
         }
       } catch (err) {
@@ -573,6 +890,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           showLandingView();
           return;
         }
+
         const user = await res.json();
         const displayName = user.display_name || user.email.split('@')[0];
         document.getElementById('userDisplayName').textContent = displayName;
@@ -580,35 +898,30 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
         document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
 
         const role = (user.role || 'user').toUpperCase();
-        const roleEl = document.getElementById('userRoleBadge');
-        roleEl.textContent = role;
-        if (role === 'SUPER_ADMIN' || role === 'ADMIN') {
-          roleEl.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase';
-        }
+        document.getElementById('userRoleBadge').textContent = role;
 
         const verifiedEl = document.getElementById('userVerifiedBadge');
         if (user.email_verified) {
           verifiedEl.textContent = '✓ Verified';
-          verifiedEl.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+          verifiedEl.style.color = '#6ee7b7';
           verifiedEl.onclick = null;
           verifiedEl.style.cursor = 'default';
         } else {
-          verifiedEl.innerHTML = '✉️ Unverified <span class="underline font-bold ml-1">[Verify Now]</span>';
-          verifiedEl.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 cursor-pointer transition';
-          verifiedEl.title = 'Click to verify your email address immediately without an email token';
+          verifiedEl.innerHTML = '✉️ Unverified <span style="text-decoration: underline; font-weight: 700; margin-left: 0.25rem;">[Verify Now]</span>';
+          verifiedEl.style.cursor = 'pointer';
           verifiedEl.onclick = async () => {
             try {
               verifiedEl.textContent = 'Verifying...';
-              const res = await fetch('/api/auth/verify-self', {
+              const vRes = await fetch('/api/auth/verify-self', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
               });
-              const data = await res.json();
-              if (res.ok) {
-                alert('✓ ' + (data.message || 'Email verified successfully!'));
+              const vData = await vRes.json();
+              if (vRes.ok) {
+                alert('✓ ' + (vData.message || 'Email verified successfully!'));
                 loadProfile(token);
               } else {
-                alert('Verification failed: ' + (data.detail || 'Error'));
+                alert('Verification: ' + parseErrorMessage(vData));
                 loadProfile(token);
               }
             } catch (err) {
@@ -619,10 +932,8 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
         }
 
         document.getElementById('tokenDisplay').value = token;
-        const endpointEl = document.getElementById('backendEndpointDisplay');
-        if (endpointEl) endpointEl.textContent = window.location.origin;
 
-        // Fetch subscription summary
+        // Fetch subscription quota details
         try {
           const subRes = await fetch('/api/subscription/me', {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -671,7 +982,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       document.getElementById('landingView').classList.add('hidden');
       document.getElementById('dashView').classList.remove('hidden');
       document.getElementById('navAuthArea').innerHTML = `
-        <button onclick="handleLogout()" class="text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition-colors">
+        <button onclick="handleLogout()" class="btn btn-secondary btn-sm">
           Sign Out
         </button>
       `;
@@ -681,25 +992,19 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       document.getElementById('landingView').classList.remove('hidden');
       document.getElementById('dashView').classList.add('hidden');
       document.getElementById('navAuthArea').innerHTML = `
-        <button onclick="scrollToAuth('signin')" class="text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition-colors">
-          Sign In
-        </button>
-        <button onclick="scrollToAuth('signup')" class="text-xs font-semibold px-3.5 py-1.5 rounded-lg gradient-border-btn text-white shadow-sm">
-          Get Started Free
-        </button>
+        <button onclick="scrollToAuth('signin')" class="btn btn-secondary btn-sm">Sign In</button>
+        <button onclick="scrollToAuth('signup')" class="btn btn-primary btn-sm">Get Started</button>
       `;
     }
 
     function showAlert(msg, isError) {
       const el = document.getElementById('authAlert');
       el.textContent = msg;
-      el.className = isError 
-        ? 'mb-4 p-3 rounded-xl text-xs bg-red-500/10 border border-red-500/20 text-red-300 block'
-        : 'mb-4 p-3 rounded-xl text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 block';
+      el.className = isError ? 'alert-banner alert-error' : 'alert-banner alert-success';
     }
 
     function hideAlert() {
-      document.getElementById('authAlert').classList.add('hidden');
+      document.getElementById('authAlert').className = 'alert-banner hidden';
     }
 
     function copyToken() {
@@ -708,9 +1013,9 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       navigator.clipboard.writeText(input.value);
       const btn = document.getElementById('copyTokenBtn');
       const orig = btn.innerHTML;
-      btn.innerHTML = '<span>✓ Copied!</span>';
+      btn.innerHTML = '✓ Copied!';
       setTimeout(() => { btn.innerHTML = orig; }, 2500);
-      alert('✓ Session Token copied! In your CodeMate AI extension, click the "Paste Token" tab and connect to log in immediately.');
+      alert('✓ Session Token copied to clipboard!\n\nNext step: Open your CodeMate Chrome extension, switch to the "Paste Token" tab, and click "Link Extension with Token" to log in.');
     }
 
     async function handleFeatureRequest(e) {
@@ -729,14 +1034,14 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           body: JSON.stringify({ title, description, category: 'GENERAL' })
         });
         if (res.ok) {
-          alert('Thank you! Your feature request has been registered.');
+          alert('✓ Thank you! Your feedback has been registered.');
           document.getElementById('frTitle').value = '';
           document.getElementById('frDesc').value = '';
         } else {
           alert('Could not submit request. Please try again.');
         }
       } catch {
-        alert('Feature request submitted.');
+        alert('Feedback submitted.');
       }
     }
   </script>
@@ -750,7 +1055,7 @@ PRICING_PAGE_HTML = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CodeMate AI — Student-Friendly Daily Passes & Pricing</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Pure CSS Embedded -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1051,7 +1356,7 @@ ADMIN_COUPONS_HTML = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CodeMate AI — Admin Coupon & Campaign Governance</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Pure CSS Embedded -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
