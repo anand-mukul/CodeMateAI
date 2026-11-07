@@ -5,10 +5,11 @@ Defines subscription tiers, payment records, webhook tracking, and feature quota
 
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, generate_uuid, utc_now
+from app.models.enums import BillingInterval, SubscriptionStatus, PaymentStatus, WebhookProcessingStatus
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -22,7 +23,7 @@ class Plan(Base):
     description: Mapped[str] = mapped_column(String(255), nullable=False)
     price: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # In paise (e.g. 49900 = ₹499)
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="INR")
-    billing_interval: Mapped[str] = mapped_column(String(20), nullable=False, default="month")
+    billing_interval: Mapped[str] = mapped_column(SQLEnum(BillingInterval, native_enum=False, length=20, values_callable=lambda x: [e.value for e in x]), nullable=False, default=BillingInterval.MONTH.value)
     device_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     concurrent_session_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     ai_usage_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=10)  # Daily request limit
@@ -40,7 +41,7 @@ class Subscription(Base, TimestampMixin):
     plan_id: Mapped[str] = mapped_column(String(32), ForeignKey("plans.id"), nullable=False)
     billing_provider: Mapped[str] = mapped_column(String(30), nullable=False, default="razorpay")
     provider_subscription_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")  # active, past_due, cancelled, halted, expired
+    status: Mapped[str] = mapped_column(SQLEnum(SubscriptionStatus, native_enum=False, length=30, values_callable=lambda x: [e.value for e in x]), nullable=False, default=SubscriptionStatus.ACTIVE.value)
     current_period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     current_period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     cancel_at_period_end: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -66,7 +67,7 @@ class Payment(Base):
     provider_payment_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True, nullable=True)
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="INR")
-    payment_status: Mapped[str] = mapped_column(String(30), nullable=False, default="created")  # created, authorized, captured, failed, refunded
+    payment_status: Mapped[str] = mapped_column(SQLEnum(PaymentStatus, native_enum=False, length=30, values_callable=lambda x: [e.value for e in x]), nullable=False, default=PaymentStatus.CREATED.value)
     coupon_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     discount_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
@@ -88,7 +89,7 @@ class WebhookEvent(Base):
     provider: Mapped[str] = mapped_column(String(30), nullable=False, default="razorpay")
     event_id: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    processing_status: Mapped[str] = mapped_column(String(30), nullable=False, default="received")  # received, processed, failed, ignored
+    processing_status: Mapped[str] = mapped_column(SQLEnum(WebhookProcessingStatus, native_enum=False, length=30, values_callable=lambda x: [e.value for e in x]), nullable=False, default=WebhookProcessingStatus.RECEIVED.value)
     payload_preview: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

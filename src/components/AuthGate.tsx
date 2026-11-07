@@ -18,6 +18,8 @@ import {
   ExternalLink,
   Code2,
   Zap,
+  Key,
+  ClipboardPaste,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { AuthService } from '../services/auth-service';
@@ -27,12 +29,13 @@ interface AuthGateProps {
 }
 
 export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
-  const { login, register } = useAuth();
+  const { login, register, loginWithToken } = useAuth();
 
-  const [tab, setTab] = useState<'signin' | 'signup' | 'forgot'>('signin');
+  const [tab, setTab] = useState<'signin' | 'signup' | 'forgot' | 'token'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [sessionTokenInput, setSessionTokenInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -53,6 +56,8 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
         const res = await AuthService.forgotPassword(email);
         onNotify?.(res.message, false);
         setTab('signin');
+      } else if (tab === 'token') {
+        await handleTokenLogin();
       }
     } catch (err: any) {
       const msg = err.data?.detail || err.message || 'Authentication failed. Please check credentials.';
@@ -63,8 +68,39 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
     }
   };
 
+  const handleTokenLogin = async () => {
+    const clean = sessionTokenInput.trim();
+    if (!clean) {
+      setLocalError('Please paste your session token from the web portal.');
+      return;
+    }
+    setLocalError(null);
+    setLoading(true);
+    try {
+      await loginWithToken(clean);
+      onNotify?.('✓ Extension successfully linked with your web portal session!', false);
+    } catch (err: any) {
+      const msg = err.data?.detail || err.message || 'Invalid or expired session token.';
+      setLocalError(msg);
+      onNotify?.(msg, true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasteClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim().length > 10) {
+        setSessionTokenInput(text.trim());
+      }
+    } catch {
+      // Permission or fallback
+    }
+  };
+
   const handleOpenWebDashboard = () => {
-    const webUrl = 'http://127.0.0.1:8000/docs';
+    const webUrl = `${AuthService.getBaseUrl()}/portal`;
     if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
       chrome.tabs.create({ url: webUrl });
     } else {
@@ -118,7 +154,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
       {/* Auth Card */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
         {/* Tab Toggle */}
-        <div className="flex items-center p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs">
+        <div className="flex items-center p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs gap-1">
           <button
             type="button"
             onClick={() => {
@@ -145,7 +181,22 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            Create Account
+            Register
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTab('token');
+              setLocalError(null);
+            }}
+            className={`flex-1 py-1.5 text-center font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${
+              tab === 'token'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Key className="w-3 h-3" />
+            <span>Paste Token</span>
           </button>
         </div>
 
@@ -157,81 +208,146 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
           </div>
         )}
 
-        {/* Auth Form */}
-        <form onSubmit={handleSubmit} className="flex flex-col gap-2.5">
-          {tab === 'signup' && (
+        {/* Token Link View */}
+        {tab === 'token' ? (
+          <div className="flex flex-col gap-3">
+            <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-200 text-xs flex items-start gap-2 leading-relaxed">
+              <Key className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+              <div>
+                Logged into the Web Dashboard? Copy the <strong>Session Token</strong> at the bottom of the portal and link this extension instantly without password.
+              </div>
+            </div>
+
             <div>
-              <label className="text-[11px] font-medium text-slate-300 block mb-1">Full Name</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-medium text-slate-300">Web Session Token</label>
+                <button
+                  type="button"
+                  onClick={handlePasteClipboard}
+                  className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium"
+                >
+                  <ClipboardPaste className="w-3 h-3" />
+                  <span>Paste Clipboard</span>
+                </button>
+              </div>
+              <textarea
+                rows={4}
+                required
+                placeholder="Paste the session token from your web dashboard here (starts with eyJ...)"
+                value={sessionTokenInput}
+                onChange={(e) => setSessionTokenInput(e.target.value)}
+                className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl font-mono text-[11px] text-indigo-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors resize-none"
+              />
+            </div>
+
+            <button
+              type="button"
+              disabled={loading || !sessionTokenInput.trim()}
+              onClick={handleTokenLogin}
+              className="w-full mt-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              {loading ? (
+                <span className="animate-pulse">Validating & Linking Session...</span>
+              ) : (
+                <>
+                  <span>Link Extension with Token</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </>
+              )}
+            </button>
+          </div>
+        ) : (
+          /* Normal Auth Form */
+          <form onSubmit={handleSubmit} className="flex flex-col gap-2.5">
+            {tab === 'signup' && (
+              <div>
+                <label className="text-[11px] font-medium text-slate-300 block mb-1">Full Name</label>
+                <div className="relative">
+                  <User className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ada Lovelace"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="text-[11px] font-medium text-slate-300 block mb-1">Email Address</label>
               <div className="relative">
-                <User className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Mail className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
-                  type="text"
+                  type="email"
                   required
-                  placeholder="Ada Lovelace"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="dev@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
             </div>
-          )}
 
-          <div>
-            <label className="text-[11px] font-medium text-slate-300 block mb-1">Email Address</label>
-            <div className="relative">
-              <Mail className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="email"
-                required
-                placeholder="dev@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-              />
-            </div>
-          </div>
-
-          {tab !== 'forgot' && (
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-medium text-slate-300">Password</label>
-                {tab === 'signin' && (
+            {tab !== 'forgot' && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-medium text-slate-300">Password</label>
+                  {tab === 'signin' && (
+                    <button
+                      type="button"
+                      onClick={() => setTab('forgot')}
+                      className="text-[10px] text-indigo-400 hover:text-indigo-300"
+                    >
+                      Forgot Password?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Lock className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full pl-9 pr-9 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                  />
                   <button
                     type="button"
-                    onClick={() => setTab('forgot')}
-                    className="text-[10px] text-indigo-400 hover:text-indigo-300"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-slate-500 hover:text-slate-300 absolute right-3 top-1/2 -translate-y-1/2"
                   >
-                    Forgot Password?
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
-                )}
+                </div>
               </div>
-              <div className="relative">
-                <Lock className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-9 pr-9 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-                />
+            )}
+
+            {tab === 'signin' && (
+              <div className="flex justify-end">
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="text-slate-500 hover:text-slate-300 absolute right-3 top-1/2 -translate-y-1/2"
+                  onClick={() => {
+                    setTab('token');
+                    setLocalError(null);
+                  }}
+                  className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium"
                 >
-                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  <Key className="w-2.5 h-2.5" />
+                  <span>Have a Web Session Token? Link here ➔</span>
                 </button>
               </div>
-            </div>
-          )}
+            )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] disabled:opacity-50"
-          >
-            {loading ? (
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full mt-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              {loading ? (
               <span className="animate-pulse">Authenticating...</span>
             ) : (
               <>
@@ -245,6 +361,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
             )}
           </button>
         </form>
+        )}
 
         {/* Web Portal Button */}
         <div className="pt-2 border-t border-slate-800/80 flex flex-col gap-1.5">
@@ -253,11 +370,11 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
             onClick={handleOpenWebDashboard}
             className="w-full py-2 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700/60 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
           >
-            <span>Manage via Web Dashboard</span>
+            <span>Open Web Portal & Dashboard</span>
             <ExternalLink className="w-3 h-3 text-slate-400" />
           </button>
           <p className="text-[10px] text-slate-500 text-center">
-            Sign-in is required to secure device limits (max 2) and track AI request quotas.
+            Sign in to track AI quotas, manage active devices, and sync session tokens.
           </p>
         </div>
       </div>

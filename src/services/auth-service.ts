@@ -26,7 +26,7 @@ export class AuthService {
   private static refreshPromise: Promise<{ access_token: string; refresh_token: string } | null> | null = null;
   private static baseUrl: string = (
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) ||
-    'http://127.0.0.1:8000'
+    'https://codemate-backend-wsi1.onrender.com'
   ).replace(/\/$/, '');
 
   public static setBaseUrl(url: string) {
@@ -240,6 +240,32 @@ export class AuthService {
     });
     await this.saveTokens(data);
     return data;
+  }
+
+  public static async loginWithToken(token: string): Promise<UserProfile> {
+    const cleanToken = token.trim();
+    if (!cleanToken) throw new Error('Session token cannot be empty.');
+
+    this.cachedAccessToken = cleanToken;
+    this.cachedRefreshToken = cleanToken;
+
+    await this.saveTokens({
+      access_token: cleanToken,
+      refresh_token: cleanToken,
+    });
+
+    try {
+      const profile = await this.getProfile();
+      await this.saveTokens({
+        access_token: cleanToken,
+        refresh_token: cleanToken,
+        user: profile,
+      });
+      return profile;
+    } catch (err: any) {
+      await this.clearTokens();
+      throw new Error(err.message || 'Invalid session token. Please copy a fresh token from the web dashboard.');
+    }
   }
 
   public static async logout(): Promise<void> {

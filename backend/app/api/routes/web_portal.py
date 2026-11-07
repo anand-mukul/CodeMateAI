@@ -360,11 +360,11 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
         <div class="glass-card p-5 rounded-2xl border border-slate-800 flex flex-col justify-between">
           <div class="flex items-center justify-between text-xs text-slate-400">
             <span>Authorized Devices</span>
-            <span class="text-blue-400 font-mono" id="deviceCount">1 / 5</span>
+            <span class="text-blue-400 font-mono" id="deviceCount">0 / 1</span>
           </div>
           <div class="my-3">
-            <div class="text-sm font-semibold text-slate-200">Chrome on Windows</div>
-            <p class="text-[11px] text-slate-500 mt-0.5">Primary Session Active</p>
+            <div class="text-sm font-semibold text-slate-200" id="primaryDeviceName">No Extension Linked</div>
+            <p class="text-[11px] text-slate-500 mt-0.5" id="primaryDeviceStatus">Paste token in extension to link</p>
           </div>
           <span class="text-[10px] text-slate-500">Hardware Bound</span>
         </div>
@@ -437,11 +437,11 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
             <div class="mt-4 p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
               <div class="flex items-center justify-between">
                 <span class="text-slate-400">Backend API Endpoint</span>
-                <span class="font-mono text-slate-300">http://127.0.0.1:8000</span>
+                <span class="font-mono text-slate-300" id="backendEndpointDisplay">https://codemate-backend-wsi1.onrender.com</span>
               </div>
               <div class="flex items-center justify-between">
                 <span class="text-slate-400">Active AI Model</span>
-                <span class="font-mono text-emerald-400">Gemini 3.8 Flash</span>
+                <span class="font-mono text-emerald-400">Gemini 2.5 Flash</span>
               </div>
               <div class="flex items-center justify-between">
                 <span class="text-slate-400">Multi-File Engine</span>
@@ -538,7 +538,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       const endpoint = currentAuthMode === 'signup' ? '/api/auth/register' : '/api/auth/login';
       const payload = currentAuthMode === 'signup' 
         ? { email, password, display_name: name || undefined } 
-        : { email, password };
+        : { email, password, device_id: 'web_portal', device_name: 'Web Dashboard', browser_name: 'Web Portal' };
 
       try {
         const res = await fetch(endpoint, {
@@ -590,12 +590,37 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
         if (user.email_verified) {
           verifiedEl.textContent = '✓ Verified';
           verifiedEl.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+          verifiedEl.onclick = null;
+          verifiedEl.style.cursor = 'default';
         } else {
-          verifiedEl.textContent = '✉️ Unverified';
-          verifiedEl.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30';
+          verifiedEl.innerHTML = '✉️ Unverified <span class="underline font-bold ml-1">[Verify Now]</span>';
+          verifiedEl.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 cursor-pointer transition';
+          verifiedEl.title = 'Click to verify your email address immediately without an email token';
+          verifiedEl.onclick = async () => {
+            try {
+              verifiedEl.textContent = 'Verifying...';
+              const res = await fetch('/api/auth/verify-self', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+              });
+              const data = await res.json();
+              if (res.ok) {
+                alert('✓ ' + (data.message || 'Email verified successfully!'));
+                loadProfile(token);
+              } else {
+                alert('Verification failed: ' + (data.detail || 'Error'));
+                loadProfile(token);
+              }
+            } catch (err) {
+              alert('Verification error: ' + err.message);
+              loadProfile(token);
+            }
+          };
         }
 
         document.getElementById('tokenDisplay').value = token;
+        const endpointEl = document.getElementById('backendEndpointDisplay');
+        if (endpointEl) endpointEl.textContent = window.location.origin;
 
         // Fetch subscription summary
         try {
@@ -604,10 +629,30 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
           });
           if (subRes.ok) {
             const sub = await subRes.json();
-            document.getElementById('planMetric').textContent = sub.plan_name || 'Developer Tier';
-            document.getElementById('quotaMetric').textContent = `${sub.ai_requests_today || 0} / ${sub.ai_usage_limit || 500}`;
-            const pct = Math.min(100, Math.round(((sub.ai_requests_today || 0) / (sub.ai_usage_limit || 500)) * 100));
+            document.getElementById('planMetric').textContent = sub.plan_name || 'Free Tier';
+            document.getElementById('planSubtext').textContent = `${sub.ai_usage_limit || 5} req/day • ${sub.device_limit || 1} registered device(s)`;
+            document.getElementById('quotaMetric').textContent = `${sub.ai_requests_today || 0} / ${sub.ai_usage_limit || 5}`;
+            const pct = Math.min(100, Math.round(((sub.ai_requests_today || 0) / (sub.ai_usage_limit || 5)) * 100));
             document.getElementById('quotaBar').style.width = `${pct}%`;
+
+            // Fetch device details
+            try {
+              const devRes = await fetch('/api/auth/devices', {
+                headers: { 'Authorization': `Bearer ${token}` }
+              });
+              if (devRes.ok) {
+                const devs = await devRes.json();
+                const activeDevs = (devs || []).filter(d => d.device_status === 'active' && !d.device_id.includes('web'));
+                document.getElementById('deviceCount').textContent = `${activeDevs.length} / ${sub.device_limit || 1}`;
+                if (activeDevs.length > 0) {
+                  document.getElementById('primaryDeviceName').textContent = activeDevs[0].device_name || 'Chrome Extension';
+                  document.getElementById('primaryDeviceStatus').textContent = 'Primary Session Active';
+                } else {
+                  document.getElementById('primaryDeviceName').textContent = 'No Extension Linked';
+                  document.getElementById('primaryDeviceStatus').textContent = 'Paste token into extension to link';
+                }
+              }
+            } catch {}
           }
         } catch {}
 
@@ -665,6 +710,7 @@ WEB_PORTAL_HTML = """<!DOCTYPE html>
       const orig = btn.innerHTML;
       btn.innerHTML = '<span>✓ Copied!</span>';
       setTimeout(() => { btn.innerHTML = orig; }, 2500);
+      alert('✓ Session Token copied! In your CodeMate AI extension, click the "Paste Token" tab and connect to log in immediately.');
     }
 
     async function handleFeatureRequest(e) {

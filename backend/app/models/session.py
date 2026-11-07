@@ -5,10 +5,11 @@ Tracks active user sessions with refresh token hash, expiry, and remote terminat
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, String, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, generate_uuid, utc_now
+from app.models.enums import SessionStatus
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -21,7 +22,7 @@ class UserSession(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     device_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     refresh_token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
-    session_status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)  # active, expired, revoked
+    session_status: Mapped[str] = mapped_column(SQLEnum(SessionStatus, native_enum=False, length=20, values_callable=lambda x: [e.value for e in x]), default=SessionStatus.ACTIVE.value, nullable=False)
 
     ip_address_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

@@ -5,10 +5,11 @@ Multi-role ticketing with strict isolation between user-facing messages and inte
 
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, generate_uuid, utc_now
+from app.models.enums import TicketPriority, TicketStatus
 
 
 class SupportTicket(Base, TimestampMixin):
@@ -19,8 +20,8 @@ class SupportTicket(Base, TimestampMixin):
     assigned_agent_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     subject: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False)  # account_access, billing_payment, ai_functionality, editor_integration, project_intelligence, bug_report, general_support
-    priority: Mapped[str] = mapped_column(String(20), default="NORMAL", nullable=False)  # LOW, NORMAL, HIGH, URGENT
-    status: Mapped[str] = mapped_column(String(30), default="OPEN", nullable=False, index=True)  # OPEN, IN_PROGRESS, WAITING_FOR_USER, WAITING_FOR_SUPPORT, RESOLVED, CLOSED
+    priority: Mapped[str] = mapped_column(SQLEnum(TicketPriority, native_enum=False, length=20, values_callable=lambda x: [e.value for e in x]), default=TicketPriority.NORMAL.value, nullable=False)
+    status: Mapped[str] = mapped_column(SQLEnum(TicketStatus, native_enum=False, length=30, values_callable=lambda x: [e.value for e in x]), default=TicketStatus.OPEN.value, nullable=False, index=True)
     last_reply_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 

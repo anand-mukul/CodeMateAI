@@ -66,7 +66,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Handle: Secure API Forwarding (Avoids mixed-content restrictions on HTTPS problem pages)
   if (message.type === 'SOLVE_PROBLEM_AUTO' || message.type === 'SECURE_FORWARD_API') {
-    const rawBaseUrl = message.baseUrl || 'http://127.0.0.1:8000';
+    const rawBaseUrl = message.baseUrl || 'https://codemate-backend-wsi1.onrender.com';
     if (!isOriginAllowed(rawBaseUrl)) {
       console.error('[CodeMate AI Security] Blocked API forwarding to unapproved origin:', rawBaseUrl);
       sendResponse({

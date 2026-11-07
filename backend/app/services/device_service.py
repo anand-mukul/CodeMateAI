@@ -72,24 +72,38 @@ class DeviceService:
         # Check plan device limit for new registration
         allowed_limit = await cls.get_user_plan_device_limit(db, user.id)
 
+        is_web = (
+            data.device_id in ("web_portal", "admin_web_portal")
+            or data.device_id.startswith("web_")
+            or "web" in (data.device_name or "").lower()
+            or "web" in (data.browser_name or "").lower()
+        )
+
         active_devices_query = select(UserDevice).where(
             and_(UserDevice.user_id == user.id, UserDevice.device_status == "active")
         )
         active_devices_res = await db.execute(active_devices_query)
-        active_devices = active_devices_res.scalars().all()
+        all_active_devices = active_devices_res.scalars().all()
 
-        if len(active_devices) >= allowed_limit:
-            # Plan device limit reached
-            device_dtos = [DeviceResponse.model_validate(d) for d in active_devices]
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "detail": f"Device limit reached. Your plan allows up to {allowed_limit} registered device(s).",
-                    "code": "DEVICE_LIMIT_REACHED",
-                    "allowed_limit": allowed_limit,
-                    "registered_devices": [d.model_dump(mode="json") for d in device_dtos],
-                },
+        # Web portal sessions do not consume extension device slots
+        extension_devices = [
+            d for d in all_active_devices
+            if not (
+                d.device_id in ("web_portal", "admin_web_portal")
+                or d.device_id.startswith("web_")
+                or "web" in (d.device_name or "").lower()
+                or "web" in (d.browser_name or "").lower()
             )
+        ]
+
+        # For extension installations: if at or over limit, auto-revoke oldest extension device
+        # so paying or free users who reinstall/switch machines are never locked out
+        if not is_web and len(extension_devices) >= allowed_limit:
+            sorted_devices = sorted(extension_devices, key=lambda d: d.last_seen_at or d.created_at)
+            devices_to_revoke = sorted_devices[: len(extension_devices) - allowed_limit + 1]
+            for old_dev in devices_to_revoke:
+                old_dev.device_status = "revoked"
+                old_dev.revoked_at = utc_now()
 
         new_device = UserDevice(
             user_id=user.id,

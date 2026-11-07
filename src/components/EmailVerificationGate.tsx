@@ -52,6 +52,21 @@ export const EmailVerificationGate: React.FC<EmailVerificationGateProps> = ({
     }
   };
 
+  const handleQuickVerify = async () => {
+    setLoading(true);
+    setErrorMessage(null);
+    try {
+      await AuthService.fetchAuth('/api/auth/verify-self', { method: 'POST' });
+      setSuccessMessage('✓ Email verified successfully! Unlocking workspace...');
+      onNotify?.('✓ Account verified successfully!', false);
+      await onVerified();
+    } catch (err: any) {
+      setErrorMessage(err.data?.detail || err.message || 'Quick verification failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleResend = async () => {
     setResending(true);
     setErrorMessage(null);
@@ -124,7 +139,16 @@ export const EmailVerificationGate: React.FC<EmailVerificationGateProps> = ({
             className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-900/50 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-indigo-600/25 cursor-pointer"
           >
             {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
-            <span>{loading ? 'Verifying...' : 'Verify & Activate Account'}</span>
+            <span>{loading ? 'Verifying...' : 'Submit Token & Activate'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleQuickVerify}
+            disabled={loading}
+            className="w-full py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+          >
+            <span>⚡ 1-Click Instant Verify (No Email Needed)</span>
           </button>
         </form>
 

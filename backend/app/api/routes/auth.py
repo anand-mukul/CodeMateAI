@@ -5,7 +5,8 @@ Provides registration, Argon2id login, token refresh rotation, email verificatio
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -360,6 +361,61 @@ async def verify_email_token(payload: VerifyEmailRequest, db: AsyncSession = Dep
     await db.commit()
 
     return {"success": True, "message": "Email verified successfully."}
+
+
+@router.get("/verify-email", response_class=HTMLResponse)
+async def verify_email_via_link(token: str = Query(..., description="Email verification token"), db: AsyncSession = Depends(get_db)):
+    """Allows 1-click verification directly from email link."""
+    now = utc_now()
+    token_hash = hash_token(token.strip())
+
+    query = select(User).where(
+        and_(
+            User.verification_token_hash == token_hash,
+            User.verification_expires_at > now,
+        )
+    )
+    result = await db.execute(query)
+    user = result.scalars().first()
+
+    if not user:
+        return HTMLResponse(
+            "<!DOCTYPE html><html><body style='background:#0f172a;color:#f8fafc;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;'>"
+            "<div style='text-align:center;padding:2.5rem;background:#1e293b;border-radius:1rem;border:1px solid #334155;max-width:420px;'>"
+            "<h2 style='color:#ef4444;margin-bottom:0.5rem;'>Verification Failed</h2>"
+            "<p style='color:#94a3b8;font-size:0.9rem;'>This verification link is invalid or has expired.</p>"
+            "<a href='/portal' style='display:inline-block;margin-top:1.5rem;padding:0.75rem 1.5rem;background:#4f46e5;color:#fff;text-decoration:none;border-radius:0.5rem;font-weight:600;'>Return to Web Portal →</a>"
+            "</div></body></html>",
+            status_code=400,
+        )
+
+    user.email_verified = True
+    user.verification_token_hash = None
+    user.verification_expires_at = None
+    await db.commit()
+
+    return HTMLResponse(
+        "<!DOCTYPE html><html><body style='background:#0f172a;color:#f8fafc;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;'>"
+        "<div style='text-align:center;padding:2.5rem;background:#1e293b;border-radius:1rem;border:1px solid #334155;max-width:420px;'>"
+        "<h2 style='color:#10b981;margin-bottom:0.5rem;'>✓ Email Verified Successfully!</h2>"
+        "<p style='color:#94a3b8;font-size:0.9rem;'>Your CodeMate AI account is now verified and active.</p>"
+        "<a href='/portal' style='display:inline-block;margin-top:1.5rem;padding:0.75rem 1.5rem;background:#10b981;color:#fff;text-decoration:none;border-radius:0.5rem;font-weight:600;'>Open Developer Portal →</a>"
+        "</div></body></html>"
+    )
+
+
+@router.post("/verify-self", status_code=status.HTTP_200_OK)
+async def verify_own_email(
+    user_and_session=Depends(get_current_user_and_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Allows an authenticated user to verify their own email in 1 click."""
+    user, _ = user_and_session
+    user.email_verified = True
+    user.verification_token_hash = None
+    user.verification_expires_at = None
+    await db.commit()
+    return {"success": True, "message": "Your email has been verified successfully!"}
 
 
 @router.post("/resend-verification", status_code=status.HTTP_200_OK)

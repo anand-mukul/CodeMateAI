@@ -43,7 +43,7 @@ export class CodeMateAPIError extends Error {
 export class CodeMateApiClient {
   private static baseUrl: string = (
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) ||
-    'http://127.0.0.1:8000'
+    'https://codemate-backend-wsi1.onrender.com'
   ).replace(/\/$/, '');
 
   private static defaultTimeoutMs = 30000;

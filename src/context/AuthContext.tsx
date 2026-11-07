@@ -22,6 +22,7 @@ interface AuthContextType {
   isLoading: boolean;
   error: string | null;
   login: (email: string, pwd: string) => Promise<void>;
+  loginWithToken: (token: string) => Promise<void>;
   register: (email: string, pwd: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
@@ -117,6 +118,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const loginWithToken = async (token: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const profile = await AuthService.loginWithToken(token);
+      setUser(profile);
+      await Promise.all([refreshSubscription(), refreshDevices(), refreshSessions()]);
+    } catch (err: any) {
+      const msg = err.data?.detail || err.message || 'Invalid session token';
+      setError(msg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const register = async (email: string, pwd: string, name?: string) => {
     setIsLoading(true);
     setError(null);
@@ -132,6 +149,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(false);
     }
   };
+
+
 
   const logout = async () => {
     setIsLoading(true);
@@ -170,6 +189,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         error,
         login,
+        loginWithToken,
         register,
         logout,
         logoutAll,
