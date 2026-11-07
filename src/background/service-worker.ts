@@ -10,6 +10,7 @@ const ALLOWED_API_ORIGIN_PATTERNS = [
   /^http:\/\/127\.0\.0\.1:\d+$/,
   /^http:\/\/localhost:\d+$/,
   /^https:\/\/[a-z0-9-]+\.codemateai\.com$/,
+  /^https:\/\/[a-z0-9-]+\.onrender\.com$/,
 ];
 
 function isOriginAllowed(urlStr: string): boolean {
