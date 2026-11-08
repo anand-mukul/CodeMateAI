@@ -14,11 +14,17 @@ from app.models.project import Project, ProjectPatch
 from app.models.subscription import Plan, Subscription
 from app.models.enums import SubscriptionStatus
 from app.models.user import User
+from app.services.pricing_registry import ModelPricingRegistry
 
 
 class AnalyticsQueries:
-    # Configurable estimated cost per 1k tokens (blended average for Flash/Mini models: $0.00015 per 1k)
-    ESTIMATED_COST_PER_1K_TOKENS_USD = 0.00015
+    ESTIMATED_COST_PER_1K_TOKENS_USD: float = 0.0006  # Blended average across models
+
+    # Centralized model pricing registry integration
+    @classmethod
+    def calculate_token_cost(cls, provider: str, model_id: str, prompt_tokens: int, completion_tokens: int) -> float:
+        res = ModelPricingRegistry.calculate_cost(provider, model_id, prompt_tokens, completion_tokens)
+        return res["total_cost_usd"]
 
     @classmethod
     async def get_overview(cls, db: AsyncSession) -> Dict[str, Any]:
@@ -180,4 +186,74 @@ class AnalyticsQueries:
             "applied_patches": applied_patches,
             "rolled_back_patches": rolled_back,
             "application_success_rate": round((applied_patches / total_patches * 100), 2) if total_patches > 0 else 100.0,
+        }
+
+    @classmethod
+    async def get_detailed_cost_report(cls, db: AsyncSession, days: int = 30) -> Dict[str, Any]:
+        """
+        Calculates official cost breakdowns per feature, provider, and model,
+        and derives unit costs per 1k requests and per task.
+        """
+        cutoff = utc_now() - timedelta(days=days)
+        events_q = select(AnalyticsEvent).where(
+            AnalyticsEvent.created_at >= cutoff,
+            AnalyticsEvent.token_usage.isnot(None),
+        )
+        events_res = await db.execute(events_q)
+        events = events_res.scalars().all()
+
+        total_cost_usd = 0.0
+        feature_costs: Dict[str, float] = {}
+        provider_costs: Dict[str, float] = {}
+        model_costs: Dict[str, float] = {}
+        total_requests = len(events)
+        successful_requests = 0
+        failed_requests = 0
+
+        for ev in events:
+            m = ev.model_identifier or "deepseek-flash"
+            # Infer provider from model name if possible
+            if "deepseek" in m.lower():
+                p = "deepseek"
+            elif "gemini" in m.lower():
+                p = "gemini"
+            elif "openrouter" in m.lower() or "/" in m:
+                p = "openrouter"
+            else:
+                p = "deepseek"
+
+            tok = ev.token_usage or 0
+            p_tok = int(tok * 0.6)
+            c_tok = int(tok * 0.4)
+            cost = ModelPricingRegistry.calculate_cost(p, m, p_tok, c_tok)["total_cost_usd"]
+
+            total_cost_usd += cost
+            feature = ev.feature_name or "other"
+            feature_costs[feature] = round(feature_costs.get(feature, 0.0) + cost, 5)
+            provider_costs[p] = round(provider_costs.get(p, 0.0) + cost, 5)
+            model_costs[m] = round(model_costs.get(m, 0.0) + cost, 5)
+
+            if ev.success is False:
+                failed_requests += 1
+            else:
+                successful_requests += 1
+
+        total_tokens = sum(ev.token_usage or 0 for ev in events)
+        cost_per_1k = round((total_cost_usd / total_requests * 1000.0), 4) if total_requests > 0 else 0.0
+
+        return {
+            "period_days": days,
+            "total_measured_requests": total_requests,
+            "successful_requests": successful_requests,
+            "failed_requests": failed_requests,
+            "total_tokens": total_tokens,
+            "total_cost_usd": round(total_cost_usd, 4),
+            "total_cost_inr": round(total_cost_usd * 87.0, 2),
+            "cost_per_1000_requests_usd": cost_per_1k,
+            "cost_per_feature": feature_costs,
+            "cost_per_provider": provider_costs,
+            "cost_per_model": model_costs,
+            "by_model": [{"model": k, "cost_usd": v, "cost_inr": round(v * 87.0, 2)} for k, v in model_costs.items()],
+            "by_feature": [{"feature": k, "cost_usd": v, "cost_inr": round(v * 87.0, 2)} for k, v in feature_costs.items()],
+            "calculation_basis": "OFFICIAL_CATALOG_RATES",
         }

@@ -232,3 +232,108 @@ class UpstashRedisService:
         for tid in stale_ids:
             _in_memory_task_store.pop(tid, None)
 
+    _redis_client: Optional[Any] = None
+
+    @classmethod
+    def get_redis_client(cls) -> Optional[Any]:
+        """
+        Returns a thread-safe redis-py Redis client when REDIS_URL is configured.
+        Lazily initialized with automatic TLS handling for Upstash endpoints.
+        """
+        if cls._redis_client is None:
+            redis_url = getattr(settings, "redis_url_normalized", None) or settings.REDIS_URL
+            if redis_url:
+                try:
+                    import redis
+                    cls._redis_client = redis.from_url(
+                        redis_url,
+                        decode_responses=True,
+                        socket_timeout=5.0,
+                        socket_connect_timeout=5.0,
+                        health_check_interval=30,
+                    )
+                    logger.info("[Redis] Initialized redis-py client pool")
+                except Exception as exc:
+                    logger.warning(f"[Redis] Could not initialize redis-py client: {exc}")
+        return cls._redis_client
+
+    @classmethod
+    async def check_connection(cls) -> Dict[str, Any]:
+        """
+        Verifies connectivity and latency against Upstash Redis.
+        Tries REST ping first (native to serverless), falls back to TCP ping if available.
+        """
+        if not cls._has_upstash_credentials() and not settings.REDIS_URL:
+            return {
+                "available": False,
+                "provider": "in_memory_fallback",
+                "message": "Upstash Redis credentials not configured. Using in-memory fallback.",
+            }
+
+        start_time = time.time()
+        # 1. Probe via Upstash REST API
+        if cls._has_upstash_credentials():
+            try:
+                base_url = settings.UPSTASH_REDIS_REST_URL.rstrip("/")
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.get(
+                        f"{base_url}/ping",
+                        headers=cls._get_rest_headers(),
+                    )
+                    latency_ms = round((time.time() - start_time) * 1000, 2)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if data.get("result") == "PONG":
+                            return {
+                                "available": True,
+                                "provider": "upstash",
+                                "protocol": "rest",
+                                "latency_ms": latency_ms,
+                                "endpoint": base_url,
+                                "error": None,
+                            }
+                        return {
+                            "available": False,
+                            "provider": "upstash",
+                            "protocol": "rest",
+                            "latency_ms": latency_ms,
+                            "error": f"Unexpected ping response: {resp.text}",
+                        }
+                    return {
+                        "available": False,
+                        "provider": "upstash",
+                        "protocol": "rest",
+                        "latency_ms": latency_ms,
+                        "error": f"HTTP {resp.status_code}: {resp.text}",
+                    }
+            except Exception as exc:
+                logger.warning(f"[Upstash Redis] REST health probe error: {exc}")
+
+        # 2. Probe via standard TCP client if REST fails or not configured
+        client = cls.get_redis_client()
+        if client:
+            try:
+                t0 = time.time()
+                is_pong = client.ping()
+                latency_ms = round((time.time() - t0) * 1000, 2)
+                return {
+                    "available": bool(is_pong),
+                    "provider": "upstash" if "upstash.io" in (settings.REDIS_URL or "") else "redis",
+                    "protocol": "tcp_tls",
+                    "latency_ms": latency_ms,
+                    "error": None if is_pong else "Ping did not return True",
+                }
+            except Exception as exc:
+                return {
+                    "available": False,
+                    "provider": "redis",
+                    "protocol": "tcp_tls",
+                    "error": str(exc),
+                }
+
+        return {
+            "available": False,
+            "provider": "upstash",
+            "error": "Failed to connect to Upstash Redis endpoint",
+        }
+

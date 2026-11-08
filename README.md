@@ -307,7 +307,7 @@ All engineering specifications, feasibility findings, and phase reports are orga
 - [Phase 5 Next Steps & Roadmap](docs/reports/phase-5/PHASE5_NEXT_STEPS.md) — Blueprint for Phase 6 authentication, device registration, and Razorpay.
 
 ### Phase 6 — Authentication, Device Registration, Sessions, Subscriptions & Razorpay (Completed)
-- [Phase 6 Architecture Audit](PHASE6_ARCHITECTURE_AUDIT.md) — Pre-implementation audit of persistence, security trust boundaries, and payment contracts.
+- [Phase 6 Architecture Audit](docs/reports/phase-6/PHASE6_ARCHITECTURE_AUDIT.md) — Pre-implementation audit of persistence, security trust boundaries, and payment contracts.
 - [Phase 6 Implementation Report](docs/reports/phase-6/PHASE6_IMPLEMENTATION_REPORT.md) — Technical delivery report for auth, devices, sessions, entitlements, and Razorpay.
 - [Phase 6 Authentication API Specification](docs/reports/phase-6/PHASE6_AUTHENTICATION_API.md) — Detailed endpoint documentation, schemas, and status codes.
 - [Phase 6 Device & Session Architecture](docs/reports/phase-6/PHASE6_DEVICE_SESSION_ARCHITECTURE.md) — Layer 1 (Device limits), Layer 2 (Session limits), and Layer 3 (Replay detection).
@@ -319,7 +319,7 @@ All engineering specifications, feasibility findings, and phase reports are orga
 - [Phase 6 Next Steps & Roadmap](docs/reports/phase-6/PHASE6_NEXT_STEPS.md) — Architecture readiness and plan for Phase 7 Multi-File Project Intelligence.
 
 ### Phase 7 — Multi-File Project Intelligence, Spring Boot Understanding & AI Workflow (Completed)
-- [Phase 7 Pre-Implementation Audit](PHASE7_ARCHITECTURE_AUDIT.md) — Architecture baseline audit, gap analysis, and module design.
+- [Phase 7 Pre-Implementation Audit](docs/reports/phase-7/PHASE7_ARCHITECTURE_AUDIT.md) — Architecture baseline audit, gap analysis, and module design.
 - [Phase 7 Implementation Report](docs/reports/phase-7/PHASE7_IMPLEMENTATION_REPORT.md) — Comprehensive technical delivery report for project intelligence and agents.
 - [Phase 7 Project Import Design](docs/reports/phase-7/PHASE7_PROJECT_IMPORT_DESIGN.md) — In-memory ZIP extraction, Zip-Slip, bomb ratio guards, and exclusion manager.
 - [Phase 7 Project Indexing Architecture](docs/reports/phase-7/PHASE7_PROJECT_INDEXING_ARCHITECTURE.md) — Incremental SHA-256 hashing, AST parsing, and symbol persistence.

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.models.enums import FeedbackStatus
 from app.models.feedback import UserFeedback
 from app.models.user import User
 from app.schemas.feedback import UserFeedbackCreateRequest, UserFeedbackResponse
@@ -39,7 +40,7 @@ async def submit_user_feedback(
         description=payload.description,
         satisfaction_score=payload.satisfaction_score,
         attachment_path=payload.attachment_path,
-        status="new",
+        status=FeedbackStatus.NEW.value,
     )
     db.add(feedback)
     await db.commit()
@@ -89,7 +90,7 @@ async def admin_update_feedback(
     if not feedback:
         raise HTTPException(status_code=404, detail="Feedback entry not found.")
 
-    feedback.status = payload.status
+    feedback.status = (payload.status or FeedbackStatus.NEW.value).upper()
     if payload.admin_notes is not None:
         feedback.admin_notes = payload.admin_notes
 

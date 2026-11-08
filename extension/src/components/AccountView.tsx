@@ -477,10 +477,15 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
               </button>
             ) : (
               <button
-                onClick={() => {
+                onClick={async () => {
                   const webUrl = AuthService.getWebPortalUrl();
-                  const token = AuthService.getCachedAccessToken();
-                  const url = token ? `${webUrl}/dashboard?session_token=${encodeURIComponent(token)}` : `${webUrl}/dashboard`;
+                  let url = `${webUrl}/dashboard`;
+                  try {
+                    const code = await AuthService.createHandoffCode();
+                    url = `${webUrl}/dashboard?handoff_code=${encodeURIComponent(code)}`;
+                  } catch {
+                    // Fall back to clean dashboard URL without exposing raw tokens in query params
+                  }
                   if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
                     chrome.tabs.create({ url });
                   } else {
@@ -510,10 +515,15 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
                 </div>
               </div>
               <button
-                onClick={() => {
+                onClick={async () => {
                   const webUrl = AuthService.getWebPortalUrl();
-                  const token = AuthService.getCachedAccessToken();
-                  const url = token ? `${webUrl}/dashboard?tab=admin&session_token=${encodeURIComponent(token)}` : `${webUrl}/dashboard?tab=admin`;
+                  let url = `${webUrl}/admin`;
+                  try {
+                    const code = await AuthService.createHandoffCode();
+                    url = `${webUrl}/admin?handoff_code=${encodeURIComponent(code)}`;
+                  } catch {
+                    // Fall back to clean admin URL without exposing raw tokens in query params
+                  }
                   if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
                     chrome.tabs.create({ url });
                   } else {

@@ -77,6 +77,16 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class UpdateProfileRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=100)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+
 class DeviceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -137,3 +147,13 @@ class DeviceLimitReachedResponse(BaseModel):
     code: str = "DEVICE_LIMIT_REACHED"
     allowed_limit: int
     registered_devices: List[DeviceResponse]
+
+
+class HandoffCreateResponse(BaseModel):
+    handoff_code: str
+    expires_in: int = 60
+
+
+class HandoffExchangeRequest(BaseModel):
+    handoff_code: str
+

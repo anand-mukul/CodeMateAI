@@ -162,11 +162,18 @@ class OpenRouterProvider(AIProvider):
 
         data = response.json()
         try:
-            raw_text = data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            raw_text = choice["message"]["content"]
+            finish_reason = choice.get("finish_reason")
+            if finish_reason == "length":
+                logger.warning(f"OpenRouter response truncated due to output token limit ({settings.AI_MAX_OUTPUT_TOKENS} tokens).")
+            usage = data.get("usage", {})
+            if usage:
+                logger.info(f"OpenRouter usage: prompt_tokens={usage.get('prompt_tokens')}, completion_tokens={usage.get('completion_tokens')}")
         except (KeyError, IndexError) as exc:
             raise ValueError(f"Failed to extract structured response from OpenRouter: {exc}") from exc
 
-        return parse_structured_response(raw_text, response_schema)
+        return parse_structured_response(raw_text, response_schema, finish_reason=finish_reason)
 
     async def check_connection(self) -> Dict[str, Any]:
         if not self._has_valid_key():

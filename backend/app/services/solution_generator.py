@@ -68,6 +68,7 @@ class SolutionGeneratorService:
         safe_output_fmt = sanitize_untrusted_text(problem.output_format or "Standard output", max_chars=5000)
 
         budget = ConstraintAnalyzer.evaluate_constraints(safe_constraints)
+        graph_taxonomy = ConstraintAnalyzer.analyze_graph_taxonomy(safe_title, safe_statement)
 
         examples_text = ""
         for i, eg in enumerate(problem.examples, 1):
@@ -123,6 +124,7 @@ class SolutionGeneratorService:
             f"CONSTRAINTS:\n{safe_constraints}\n"
             f"(Target Feasible Complexity: {budget['recommended_complexity']})\n\n"
             f"SAMPLE EXAMPLES:\n{examples_text or 'None supplied'}\n"
+            f"{graph_taxonomy['guidance']}\n"
             f"{starter_code_section}\n"
             f"CODING STYLE DIRECTIVE:\n"
             f"- Write the solution using natural student competitive programming conventions.\n"
@@ -231,27 +233,15 @@ class SolutionGeneratorService:
                     raw_files[fname] = clean_runner
                     completed_files[fname] = clean_runner
 
-        # 3. Universal Topological Sequence Order
-        # Types/Models -> Utils/Repositories -> Services/API -> Components/Controllers -> Entrypoints/Apps
-        def file_order_key(name: str) -> int:
-            n = name.lower()
-            if "type" in n or "interface" in n or "model" in n or "schema" in n or "dto" in n or "entity" in n:
-                return 1
-            if "util" in n or "repo" in n or "dao" in n or "hook" in n or "store" in n or "slice" in n:
-                return 2
-            if "service" in n or "api" in n or "crud" in n or "helper" in n:
-                return 3
-            if "component" in n or "controller" in n or "route" in n or "view" in n:
-                return 4
-            if "app" in n or "main" in n or "index" in n or "runner" in n:
-                return 5
-            return 6
+        # 3. Universal Topological Sequence Order with Dependency Analysis
+        # Models/Types -> Repositories/Utils -> Services -> Controllers/Components -> Entrypoints/Apps
+        from app.services.multifile_resolver import sort_workspace_files_topologically, extract_typed_contracts
 
-        sorted_files = sorted(raw_files.keys(), key=file_order_key)
+        sorted_files = sort_workspace_files_topologically(raw_files)
         safe_statement = sanitize_untrusted_text(problem.problem_statement, max_chars=10000)
         safe_title = sanitize_untrusted_text(problem.title, max_chars=200)
 
-        # 4. Process each file sequentially with shared memory
+        # 4. Process each file sequentially with shared typed contracts
         for fname in sorted_files:
             if fname in completed_files:
                 continue
@@ -261,10 +251,11 @@ class SolutionGeneratorService:
             if file_lang == "text":
                 file_lang = primary_lang
 
-            # Build memory context from already completed files
+            # Build contract memory context from already completed files (typed interface / public signatures)
             memory_context = ""
             for done_name, done_code in completed_files.items():
-                memory_context += f"FILE: {done_name}\n```{file_lang}\n{done_code[:800]}\n```\n\n"
+                contract = extract_typed_contracts(done_code, done_name, file_lang)
+                memory_context += f"FILE: {done_name} (TYPED API CONTRACT):\n```{file_lang}\n{contract}\n```\n\n"
 
             framework_desc = f"{framework} ({primary_lang})" if framework != "generic" else primary_lang
 

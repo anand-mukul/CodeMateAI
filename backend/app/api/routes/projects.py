@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utc_now
 from app.db.session import get_db
+from app.models.enums import PatchStatus
 from app.models.project import Project, ProjectDependency, ProjectFile, ProjectPatch, ProjectPatchFile, ProjectSymbol
 from app.models.user import User
 from app.schemas.project import (
@@ -284,7 +285,7 @@ async def generate_patches(
         project_id=project.id,
         user_id=user.id,
         task_description=payload.task_description,
-        status="proposed",
+        status=PatchStatus.PROPOSED.value,
         patch_summary=f"Coordinated patch across {len(patch_files_data)} files.",
     )
     db.add(patch_record)
@@ -383,7 +384,7 @@ async def apply_patch(
             await db.rollback()
             raise HTTPException(status_code=409, detail=str(e))
 
-    patch.status = "applied"
+    patch.status = PatchStatus.APPLIED.value
     await db.commit()
 
     return {"status": "success", "applied_files_count": applied_count, "patch_id": patch.id}
@@ -416,7 +417,7 @@ async def rollback_patch(
             files_map[file_path].last_parsed_at = utc_now()
             reverted_count += 1
 
-    patch.status = "rolled_back"
+    patch.status = PatchStatus.ROLLED_BACK.value
     await db.commit()
 
     return {"status": "success", "reverted_files_count": reverted_count, "patch_id": patch.id}
@@ -654,14 +655,14 @@ async def complete_ephemeral_file(
             "}\n"
         )
         await EventCollector.record_server_event(
-        db=db,
-        event_name="ephemeral_file_completed",
-        user_id=user.id,
-        feature_name="autopilot",
-        model_identifier=model_override,
-    )
+            db=db,
+            event_name="ephemeral_file_completed",
+            user_id=user.id,
+            feature_name="autopilot",
+            model_identifier=model_override,
+        )
 
-    return EphemeralCompleteFileResponse(
+        return EphemeralCompleteFileResponse(
             filename=fname,
             code=clean_code,
             explanation="Restored DemoApplication.java to pristine SpringBootApplication runner.",

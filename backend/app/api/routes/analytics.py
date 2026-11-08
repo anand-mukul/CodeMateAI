@@ -81,3 +81,29 @@ async def update_analytics_preference(
     await db.commit()
     return AnalyticsPreferenceDTO(opt_out=pref.opt_out)
 
+
+@router.post("/aggregate-daily")
+async def trigger_daily_analytics_rollup(
+    target_date: str = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Triggers on-demand calculation of daily aggregate analytics metrics.
+    Admin / internal maintenance endpoint.
+    """
+    from datetime import datetime, timezone
+    from app.services.analytics.event_aggregator import EventAggregator
+    from app.services.analytics.analytics_retention import AnalyticsRetentionService
+
+    date_str = target_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    aggregated = await EventAggregator.aggregate_daily_metrics(db, date_str)
+    purged = await AnalyticsRetentionService.purge_expired_events(db)
+
+    return {
+        "status": "success",
+        "date": date_str,
+        "metrics_aggregated": aggregated,
+        "expired_events_purged": purged,
+    }
+

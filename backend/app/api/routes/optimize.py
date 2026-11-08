@@ -2,6 +2,7 @@
 CodeMate AI — Code Optimization Endpoint
 """
 
+import time
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from app.schemas.solution import OptimizationRequest, OptimizationResponse
 from app.services.solution_generator import SolutionGeneratorService
@@ -50,29 +51,65 @@ async def optimize_solution(
     client_ip = request.client.host if request.client else "unknown"
     check_rate_limit(client_ip)
 
+    t0 = time.perf_counter()
     try:
         optimized = await SolutionGeneratorService.optimize_solution(body, provider=provider)
+        duration_ms = int((time.perf_counter() - t0) * 1000)
         await EventCollector.record_server_event(
             db=db,
             event_name="code_optimized",
             user_id=user.id,
             feature_name="optimize",
+            duration_ms=duration_ms,
             model_identifier=getattr(provider, "model_name", None),
         )
         return optimized
     except TimeoutError as err:
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        await EventCollector.record_server_event(
+            db=db,
+            event_name="code_optimized",
+            user_id=user.id,
+            feature_name="optimize",
+            duration_ms=duration_ms,
+            success=False,
+            failure_category="TIMEOUT",
+            model_identifier=getattr(provider, "model_name", None),
+        )
         logger.error(f"Optimization timed out: {err}")
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="Code optimization timed out.",
         )
     except ConnectionError as err:
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        await EventCollector.record_server_event(
+            db=db,
+            event_name="code_optimized",
+            user_id=user.id,
+            feature_name="optimize",
+            duration_ms=duration_ms,
+            success=False,
+            failure_category="CONNECTION_ERROR",
+            model_identifier=getattr(provider, "model_name", None),
+        )
         logger.error(f"Connection failure during optimization: {err}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="AI service unreachable.",
         )
     except Exception as err:
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        await EventCollector.record_server_event(
+            db=db,
+            event_name="code_optimized",
+            user_id=user.id,
+            feature_name="optimize",
+            duration_ms=duration_ms,
+            success=False,
+            failure_category="SERVER_ERROR",
+            model_identifier=getattr(provider, "model_name", None),
+        )
         logger.error(f"Failed to optimize code: {err}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

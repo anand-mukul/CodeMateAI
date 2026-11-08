@@ -143,11 +143,13 @@ class OpenAIProvider(AIProvider):
 
         data = response.json()
         try:
-            raw_text = data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            raw_text = choice["message"]["content"]
+            finish_reason = choice.get("finish_reason")
         except (KeyError, IndexError) as exc:
             raise ValueError(f"Malformed OpenAI JSON response: {data}") from exc
 
-        return parse_structured_response(raw_text, response_schema)
+        return parse_structured_response(raw_text, response_schema, finish_reason=finish_reason)
 
     async def check_connection(self) -> Dict[str, Any]:
         if not self._has_valid_key():

@@ -138,11 +138,12 @@ import { ClipboardManager } from '../clipboard/clipboard-manager';
   const isCodemateWeb =
     window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1' ||
-    window.location.hostname.includes('codemateai.com') ||
-    window.location.hostname.includes('onrender.com');
+    window.location.hostname === 'codemateai.com' ||
+    window.location.hostname.endsWith('.codemateai.com') ||
+    window.location.origin === 'https://codemate-frontend.onrender.com';
 
   if (isCodemateWeb) {
-    // 1. Proactively push existing extension session to web dashboard on load
+    // 1. Proactively push existing extension session to web dashboard on load with exact targetOrigin
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       chrome.storage.local.get(['codemate_auth_tokens_v1', 'codemate_user_v1'], (st) => {
         if (st?.codemate_auth_tokens_v1?.access_token) {
@@ -151,17 +152,24 @@ import { ClipboardManager } from '../clipboard/clipboard-manager';
               type: 'CODEMATE_EXT_AUTH_SYNC',
               tokens: st.codemate_auth_tokens_v1,
             },
-            '*'
+            window.location.origin
           );
         }
       });
     }
 
-    // 2. Listen for messages from web application
+    // 2. Listen for messages from web application with strict origin and schema checks
     window.addEventListener('message', (event) => {
-      if (event.source !== window || !event.data || typeof event.data !== 'object') return;
+      if (
+        event.source !== window ||
+        event.origin !== window.location.origin ||
+        !event.data ||
+        typeof event.data !== 'object'
+      ) {
+        return;
+      }
 
-      if (event.data.type === 'CODEMATE_WEB_AUTH_SYNC' && event.data.tokens?.access_token) {
+      if (event.data.type === 'CODEMATE_WEB_AUTH_SYNC' && typeof event.data.tokens?.access_token === 'string') {
         const tokens = event.data.tokens;
         chrome.storage.local.set({
           codemate_auth_tokens_v1: {
@@ -182,7 +190,7 @@ import { ClipboardManager } from '../clipboard/clipboard-manager';
                   type: 'CODEMATE_EXT_AUTH_SYNC',
                   tokens: st.codemate_auth_tokens_v1,
                 },
-                '*'
+                window.location.origin
               );
             }
           });

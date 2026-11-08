@@ -6,6 +6,7 @@ Reference: https://ai.google.dev/gemini-api/docs/get-started
 
 from typing import Any, Dict, Optional, Set, Type, TypeVar
 import asyncio
+import random
 import re
 import time
 import httpx
@@ -32,10 +33,7 @@ class GeminiProvider(AIProvider):
     """
 
     # Class-level state to track permanently deprecated (404) and rate-limited (429) models
-    _permanently_unavailable: Set[str] = {
-        "gemini-2.5-flash",
-        "gemini-3.5-flash",
-    }
+    _permanently_unavailable: Set[str] = set()
     _model_cooldowns: Dict[str, float] = {}
 
     def __init__(
@@ -48,10 +46,8 @@ class GeminiProvider(AIProvider):
         self._model_name = model_name or settings.GEMINI_MODEL or settings.AI_MODEL or "gemini-3.8-flash"
         self._fallback_models = [
             "gemini-3.8-flash",
-            "gemini-3-flash-preview",
-            "gemini-flash-latest",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-pro",
+            "gemini-3.5-flash-lite",
+            "gemini-4-argon",
         ]
         self._base_url = (
             base_url
@@ -77,6 +73,13 @@ class GeminiProvider(AIProvider):
         ):
             cls._permanently_unavailable.add(model)
             logger.info(f"GeminiProvider: Model '{model}' marked permanently unavailable (404/deprecated).")
+            return
+
+        # Check for 503 / UNAVAILABLE transient server overload
+        if "503" in err_str or "UNAVAILABLE" in err_str or "temporarily unavailable" in err_str.lower():
+            cooldown = 15.0  # Fast 15s recovery cooldown
+            cls._model_cooldowns[model] = time.time() + cooldown
+            logger.info(f"GeminiProvider: Model '{model}' put on short cooldown ({cooldown:.0f}s) due to 503 server load.")
             return
 
         # Check for 429 / quota exceeded / resource exhausted
@@ -219,8 +222,12 @@ class GeminiProvider(AIProvider):
                         contents=prompt,
                         config=config,
                     )
+                    finish = None
+                    if getattr(response, "candidates", None):
+                        cand_finish = getattr(response.candidates[0], "finish_reason", None)
+                        finish = getattr(cand_finish, "name", str(cand_finish)) if cand_finish else None
                     if response.text:
-                        parsed = parse_structured_response(response.text, response_schema)
+                        parsed = parse_structured_response(response.text, response_schema, finish_reason=finish)
                         self._record_model_success(candidate)
                         return parsed
                 except Exception as e:

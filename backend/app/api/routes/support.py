@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db.base import utc_now
 from app.db.session import get_db
+from app.models.enums import UserRole
 from app.models.support import SupportAttachment, SupportMessage, SupportTicket
 from app.models.user import User
 from app.schemas.support import (
@@ -43,8 +44,8 @@ async def create_support_ticket(
     ticket = SupportTicket(
         user_id=user.id,
         subject=payload.subject,
-        category=payload.category,
-        priority=payload.priority,
+        category=(payload.category or "GENERAL_SUPPORT").upper(),
+        priority=(payload.priority or "NORMAL").upper(),
         status="OPEN",
         last_reply_at=utc_now(),
     )
@@ -52,10 +53,11 @@ async def create_support_ticket(
     await db.flush()
 
     # Initial message
+    user_role = (user.role or "USER").upper()
     initial_msg = SupportMessage(
         ticket_id=ticket.id,
         sender_id=user.id,
-        sender_role="user",
+        sender_role=user_role,
         message_text=payload.initial_message,
         attachment_path=payload.attachment_path,
         is_internal_note=False,
@@ -81,7 +83,7 @@ async def create_support_ticket(
                 id=initial_msg.id,
                 ticket_id=ticket.id,
                 sender_id=user.id,
-                sender_role="user",
+                sender_role=user_role,
                 message_text=initial_msg.message_text,
                 attachment_path=initial_msg.attachment_path,
                 is_internal_note=False,
@@ -144,7 +146,7 @@ async def get_ticket_details(
     if not ticket:
         raise HTTPException(status_code=404, detail="Support ticket not found.")
 
-    is_staff = user.role in ("super_admin", "admin", "support_agent")
+    is_staff = (user.role or "").upper() in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value, UserRole.SUPPORT_AGENT.value)
     if not is_staff and ticket.user_id != user.id:
         raise HTTPException(status_code=403, detail="Unauthorized to access this support ticket.")
 
@@ -193,11 +195,11 @@ async def reply_to_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Support ticket not found.")
 
-    is_staff = user.role in ("super_admin", "admin", "support_agent")
+    is_staff = (user.role or "").upper() in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value, UserRole.SUPPORT_AGENT.value)
     if not is_staff and ticket.user_id != user.id:
         raise HTTPException(status_code=403, detail="Unauthorized to reply to this ticket.")
 
-    sender_role = "support_agent" if is_staff else "user"
+    sender_role = (user.role or UserRole.SUPPORT_AGENT.value).upper() if is_staff else UserRole.USER.value
     msg = SupportMessage(
         ticket_id=ticket.id,
         sender_id=user.id,
@@ -290,7 +292,7 @@ async def post_internal_note(
     note = SupportMessage(
         ticket_id=ticket.id,
         sender_id=admin.id,
-        sender_role=admin.role or "support_agent",
+        sender_role=(admin.role or UserRole.SUPPORT_AGENT.value).upper(),
         message_text=payload.message_text,
         is_internal_note=True,
     )

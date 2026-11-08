@@ -3,6 +3,7 @@ CodeMate AI — Hardened FastAPI Main Application Entry Point
 Equipped with Idempotency Support, Adaptive Backoff Compliance, and Telemetry Tracing.
 """
 
+import asyncio
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -19,18 +20,84 @@ from app.api.router import api_router
 from app.db.session import init_db, close_db
 
 
+async def _periodic_analytics_rollup():
+    """Background task running periodic aggregation and retention pruning."""
+    from datetime import datetime, timezone
+    from app.services.analytics.event_aggregator import EventAggregator
+    from app.services.analytics.analytics_retention import AnalyticsRetentionService
+    from app.db.session import async_session_factory
+
+    while True:
+        try:
+            await asyncio.sleep(86400)  # Every 24 hours
+            async with async_session_factory() as session:
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                await EventAggregator.aggregate_daily_metrics(session, today)
+                await AnalyticsRetentionService.purge_expired_events(session)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning(f"Background analytics rollup task warning: {e}")
+            await asyncio.sleep(300)
+
+
+async def _init_active_ai_provider():
+    """Restores admin-configured AI provider from database on startup."""
+    import json
+    from sqlalchemy import select
+    from app.db.session import async_session_factory
+    from app.models.feature_flag import FeatureFlag
+    from app.ai.provider_manager import ProviderManager
+
+    try:
+        async with async_session_factory() as session:
+            q = select(FeatureFlag).where(FeatureFlag.key == "active_ai_provider", FeatureFlag.is_enabled == True)
+            res = await session.execute(q)
+            flag = res.scalar_one_or_none()
+            if flag and flag.description:
+                data = json.loads(flag.description)
+                prov = data.get("provider")
+                mod = data.get("model")
+                if prov:
+                    ProviderManager.set_default_provider_name(prov, mod)
+    except Exception as e:
+        logger.warning(f"Could not restore active AI provider from database: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Application lifespan manager.
     Initializes database schema and default subscription tiers on startup,
+    restores configured default AI provider, schedules background rollups,
     and gracefully drains database connection pools on shutdown.
     """
     logger.info("CodeMate AI server starting up — initializing database & subscription engine...")
     await init_db()
-    yield
-    logger.info("CodeMate AI server shutting down — disposing database connection pool...")
-    await close_db()
+    await _init_active_ai_provider()
+
+    # Ephemeral Working Memory (Upstash Redis) initialization check
+    try:
+        from app.services.upstash_service import UpstashRedisService
+        redis_status = await UpstashRedisService.check_connection()
+        if redis_status.get("available"):
+            logger.info(f"[Redis] Upstash Redis connected successfully ({redis_status.get('latency_ms')}ms latency, protocol={redis_status.get('protocol')})")
+        else:
+            logger.warning(f"[Redis] Upstash Redis status: {redis_status.get('message') or redis_status.get('error')}")
+    except Exception as exc:
+        logger.warning(f"[Redis] Upstash Redis probe failed on startup: {exc}")
+
+    rollup_task = asyncio.create_task(_periodic_analytics_rollup())
+    try:
+        yield
+    finally:
+        logger.info("CodeMate AI server shutting down — cancelling background tasks & disposing pool...")
+        rollup_task.cancel()
+        try:
+            await asyncio.wait_for(rollup_task, timeout=2.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
+        await close_db()
 
 
 app = FastAPI(

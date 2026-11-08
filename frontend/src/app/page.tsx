@@ -55,7 +55,7 @@ export default function LandingPage() {
               href="/dashboard"
               className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-sm shadow-indigo-600/30"
             >
-              <span>Workspace</span>
+              <span>Dashboard</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           ) : (
@@ -106,7 +106,7 @@ export default function LandingPage() {
             href="/login"
             className="w-full sm:w-auto px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold flex items-center justify-center gap-2 transition active:scale-95 shadow-lg shadow-indigo-600/25"
           >
-            <span>Launch Cloud Workspace</span>
+            <span>Open Developer Portal</span>
             <ArrowRight className="w-4 h-4" />
           </Link>
           <a
@@ -135,7 +135,7 @@ export default function LandingPage() {
 
           {/* Code Window */}
           <div className="p-6 space-y-2 text-zinc-300 overflow-x-auto leading-relaxed">
-            <p className="text-zinc-500">// CodeMate Sequential Multi-File &amp; Competitive Solver</p>
+            <p className="text-zinc-500">{"// CodeMate Sequential Multi-File & Competitive Solver"}</p>
             <p className="text-purple-400">
               import <span className="text-zinc-300">java.io.*;</span>
             </p>
@@ -153,7 +153,7 @@ export default function LandingPage() {
               BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
             </p>
             <p className="pl-8 text-emerald-400">
-              // Topological resolution: O(N log N) optimal segment tree traversal
+              {"// Topological resolution: O(N log N) optimal segment tree traversal"}
             </p>
             <p className="pl-8 text-zinc-300">
               FastScanner sc = new FastScanner(br);

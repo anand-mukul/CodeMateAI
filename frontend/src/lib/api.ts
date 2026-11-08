@@ -85,6 +85,21 @@ export interface CouponItem {
   created_at: string;
 }
 
+export interface AIProviderInfo {
+  id: string;
+  name: string;
+  models: string[];
+  default_model: string;
+  configured: boolean;
+  status: string;
+}
+
+export interface AIProviderStatusResponse {
+  active_provider: string;
+  active_model: string;
+  available_providers: AIProviderInfo[];
+}
+
 export interface SupportTicketItem {
   id: string;
   user_id: string;
@@ -96,6 +111,179 @@ export interface SupportTicketItem {
   status: "open" | "in_progress" | "resolved" | "closed";
   created_at: string;
   updated_at?: string;
+}
+
+export interface CustomerPaymentItem {
+  id: string;
+  provider: string;
+  provider_order_id: string;
+  provider_payment_id: string | null;
+  amount: number; // in paise
+  currency: string;
+  payment_status: string;
+  created_at: string;
+  verified_at: string | null;
+}
+
+export interface CustomerSessionItem {
+  id: string;
+  device_id: string;
+  session_status: string;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  is_current: boolean;
+  device_name?: string;
+  browser_name?: string;
+}
+
+export interface SupportMessageItem {
+  id: string;
+  ticket_id: string;
+  sender_id: string;
+  sender_role: string;
+  message_text: string;
+  attachment_path?: string | null;
+  is_internal_note: boolean;
+  created_at: string;
+}
+
+export interface SupportTicketDetailItem {
+  id: string;
+  user_id: string;
+  subject: string;
+  category: string;
+  priority: string;
+  status: string;
+  last_reply_at: string;
+  created_at: string;
+  updated_at: string;
+  messages: SupportMessageItem[];
+}
+
+export interface AdminUserNote {
+  id: string;
+  admin_id: string;
+  note: string;
+  created_at: string;
+}
+
+export interface AdminUserDetails {
+  user: AdminUserItem;
+  subscription: SubscriptionSummary | null;
+  payments: AdminPaymentItem[];
+  devices: DeviceItem[];
+  active_sessions: Array<{
+    id: string;
+    device_id: string;
+    device_name: string;
+    ip_address?: string;
+    created_at: string;
+    last_active_at: string;
+  }>;
+  notes: AdminUserNote[];
+}
+
+export interface AdminPaymentItem {
+  id: string;
+  user_id: string;
+  user_email?: string;
+  order_id: string;
+  payment_id: string | null;
+  amount_rupees: number;
+  currency: string;
+  payment_status: string;
+  provider: string;
+  provider_order_id: string;
+  provider_payment_id: string | null;
+  coupon_code: string | null;
+  discount_amount_paise: number;
+  created_at: string;
+  verified_at: string | null;
+}
+
+export interface AdminSubscriptionItem {
+  id: string;
+  user_id: string;
+  user_email: string;
+  plan_id: string;
+  plan_name: string;
+  status: string;
+  billing_provider: string;
+  current_period_start: string;
+  current_period_end: string;
+  cancel_at_period_end: boolean;
+  created_at: string;
+}
+
+export interface AdminRevenueAnalytics {
+  gross_collected_rupees: number;
+  total_refunds_rupees: number;
+  net_revenue_rupees: number;
+  gross_collected_usd: number;
+  net_revenue_usd: number;
+  total_paying_customers: number;
+  active_paid_subscriptions: number;
+  payment_success_rate: number;
+  estimated_mrr_rupees: number;
+  estimated_arr_rupees: number;
+  revenue_by_plan: Array<{ plan: string; revenue_rupees: number; count: number }>;
+  daily_revenue_timeline: Array<{ date: string; amount_rupees: number; payment_count: number }>;
+}
+
+export interface AdminAIDetailedCost {
+  total_tokens_consumed: number;
+  estimated_total_cost_usd: number;
+  estimated_total_cost_inr: number;
+  active_primary_provider: string;
+  active_primary_model: string;
+  cost_by_model: Array<{ model: string; cost_usd: number; cost_inr: number }>;
+  cost_by_feature: Array<{ feature: string; cost_usd: number; cost_inr: number }>;
+  daily_cost_timeline: Array<{ date: string; cost_usd: number; cost_inr: number }>;
+}
+
+export interface AdminBackgroundJob {
+  id: string;
+  name: string;
+  schedule: string;
+  status: string;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  duration_ms: number | null;
+  details?: Record<string, unknown>;
+}
+
+export interface AdminPlatformSettings {
+  maintenance_mode: boolean;
+  announcement_banner: string | null;
+  daily_ai_request_global_cap: number;
+  allow_new_registrations: boolean;
+  updated_at: string;
+}
+
+export interface AdminAuditLogItem {
+  id: string;
+  admin_id: string;
+  admin_email?: string;
+  action: string;
+  resource_type?: string;
+  resource_id?: string;
+  details?: Record<string, unknown>;
+  ip_address?: string;
+  created_at: string;
+}
+
+export interface FeatureFlagItem {
+  id: string;
+  key: string;
+  name: string;
+  description?: string;
+  is_enabled: boolean;
+  target_audience: string;
+  minimum_plan?: string;
+  rollout_percentage: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export function getApiBaseUrl(): string {
@@ -225,11 +413,73 @@ export const authApi = {
     return fetchWithAuth<UserProfile>('/api/auth/me');
   },
 
+  async updateProfile(displayName: string) {
+    return fetchWithAuth<UserProfile>('/api/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ display_name: displayName }),
+    });
+  },
+
+  async changePassword(currentPassword: string, newPassword: string) {
+    return fetchWithAuth<{ success: boolean; message: string }>('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+  },
+
+  async forgotPassword(email: string) {
+    return fetchWithAuth<{ success: boolean; message: string }>('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async resetPassword(token: string, newPassword: string) {
+    return fetchWithAuth<{ success: boolean; message: string }>('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
+  },
+
+  async verifyEmail(token: string) {
+    return fetchWithAuth<{ success: boolean; message: string }>('/api/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  },
+
   async resendVerification(email: string) {
     return fetchWithAuth<{ success: boolean; message: string }>('/api/auth/resend-verification', {
       method: 'POST',
       body: JSON.stringify({ email }),
     });
+  },
+
+  async createHandoffCode() {
+    return fetchWithAuth<{ handoff_code: string; expires_in: number }>('/api/auth/handoff/create', {
+      method: 'POST',
+    });
+  },
+
+  async exchangeHandoffCode(handoffCode: string) {
+    const data = await fetchWithAuth<{
+      access_token: string;
+      refresh_token: string;
+      token_type: string;
+      expires_in: number;
+      user: UserProfile;
+    }>('/api/auth/handoff/exchange', {
+      method: 'POST',
+      body: JSON.stringify({ handoff_code: handoffCode }),
+    });
+    if (typeof window !== 'undefined' && data.access_token) {
+      localStorage.setItem('codemate_web_token', data.access_token);
+      if (data.refresh_token) {
+        localStorage.setItem('codemate_refresh_token', data.refresh_token);
+      }
+      localStorage.setItem('codemate_user_role', data.user.role);
+    }
+    return data;
   },
 
   async logout() {
@@ -311,6 +561,29 @@ export const paymentsApi = {
       body: JSON.stringify(data),
     });
   },
+
+  async getHistory() {
+    return fetchWithAuth<CustomerPaymentItem[]>('/api/payments/history');
+  },
+};
+
+// ----------------- Sessions API -----------------
+export const sessionsApi = {
+  async list() {
+    return fetchWithAuth<CustomerSessionItem[]>('/api/sessions');
+  },
+
+  async revoke(sessionId: string) {
+    return fetchWithAuth<{ success: boolean; message: string }>(`/api/sessions/${sessionId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async revokeAll() {
+    return fetchWithAuth<{ success: boolean; message: string }>('/api/sessions', {
+      method: 'DELETE',
+    });
+  },
 };
 
 // ----------------- Admin API -----------------
@@ -380,34 +653,173 @@ export const adminApi = {
   async getSystemHealth() {
     return fetchWithAuth<Record<string, unknown>>('/api/admin/system/health');
   },
+
+  async getAIProviderStatus() {
+    return fetchWithAuth<AIProviderStatusResponse>('/api/admin/ai-provider');
+  },
+
+  async updateAIProvider(provider: string, model?: string) {
+    return fetchWithAuth<AIProviderStatusResponse>('/api/admin/ai-provider', {
+      method: 'PUT',
+      body: JSON.stringify({ provider, model }),
+    });
+  },
+
+  async testAIProvider(provider: string, model?: string) {
+    return fetchWithAuth<{
+      provider: string;
+      model?: string;
+      available: boolean;
+      latency_ms?: number;
+      sample_response?: string;
+      available_models?: string[];
+      error?: string;
+    }>('/api/admin/ai-provider/test', {
+      method: 'POST',
+      body: JSON.stringify({ provider, model }),
+    });
+  },
+
+  async getUserDetails(userId: string) {
+    return fetchWithAuth<AdminUserDetails>(`/api/admin/users/${userId}`);
+  },
+
+  async banUser(userId: string, reason: string) {
+    return fetchWithAuth<{ message: string; user_id: string }>(`/api/admin/users/${userId}/ban`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  async unbanUser(userId: string) {
+    return fetchWithAuth<{ message: string; user_id: string }>(`/api/admin/users/${userId}/unban`, {
+      method: 'POST',
+    });
+  },
+
+  async addUserNote(userId: string, note: string) {
+    return fetchWithAuth<AdminUserNote>(`/api/admin/users/${userId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    });
+  },
+
+  async revokeUserDevice(userId: string, deviceId: string) {
+    return fetchWithAuth<{ message: string }>(`/api/admin/users/${userId}/devices/${deviceId}/revoke`, {
+      method: 'POST',
+    });
+  },
+
+  async getSubscriptions() {
+    return fetchWithAuth<AdminSubscriptionItem[]>('/api/admin/subscriptions');
+  },
+
+  async cancelSubscription(subscriptionId: string, immediately = false) {
+    return fetchWithAuth<{ message: string; status: string }>(`/api/admin/subscriptions/${subscriptionId}/cancel?immediately=${immediately}`, {
+      method: 'POST',
+    });
+  },
+
+  async getPayments() {
+    return fetchWithAuth<AdminPaymentItem[]>('/api/admin/payments');
+  },
+
+  async processRefund(paymentId: string, reason: string, amountPaise?: number) {
+    return fetchWithAuth<{ message: string; refund_id: string; amount_refunded_rupees: number }>(`/api/admin/payments/${paymentId}/refund`, {
+      method: 'POST',
+      body: JSON.stringify({ reason, amount_paise: amountPaise }),
+    });
+  },
+
+  async getRefunds() {
+    return fetchWithAuth<AdminPaymentItem[]>('/api/admin/refunds');
+  },
+
+  async getRevenueAnalytics(days = 30) {
+    return fetchWithAuth<AdminRevenueAnalytics>(`/api/admin/analytics/revenue?days=${days}`);
+  },
+
+  async getAIDetailedAnalytics(days = 30) {
+    return fetchWithAuth<AdminAIDetailedCost>(`/api/admin/analytics/ai-detailed?days=${days}`);
+  },
+
+  async getAuditLogs(limit = 100) {
+    return fetchWithAuth<AdminAuditLogItem[]>(`/api/admin/audit-logs?limit=${limit}`);
+  },
+
+  async getFeatureFlags() {
+    return fetchWithAuth<FeatureFlagItem[]>('/api/admin/features');
+  },
+
+  async updateFeatureFlag(flagId: string, payload: Partial<FeatureFlagItem>) {
+    return fetchWithAuth<FeatureFlagItem>(`/api/admin/features/${flagId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getJobs() {
+    return fetchWithAuth<AdminBackgroundJob[]>('/api/admin/jobs');
+  },
+
+  async getSettings() {
+    return fetchWithAuth<AdminPlatformSettings>('/api/admin/settings');
+  },
+
+  async updateSettings(payload: Partial<AdminPlatformSettings>) {
+    return fetchWithAuth<AdminPlatformSettings>('/api/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getProductAnalytics() {
+    return fetchWithAuth<Record<string, unknown>>('/api/admin/analytics/features');
+  },
 };
 
 // ----------------- Support API -----------------
 export const supportApi = {
   async getTickets() {
-    return fetchWithAuth<SupportTicketItem[]>('/api/support/tickets');
+    return fetchWithAuth<SupportTicketDetailItem[]>('/api/support/tickets');
+  },
+
+  async getTicket(ticketId: string) {
+    return fetchWithAuth<SupportTicketDetailItem>(`/api/support/tickets/${ticketId}`);
   },
 
   async createTicket(payload: {
-    title: string;
-    description: string;
+    subject: string;
     category: string;
-    priority: string;
+    priority?: string;
+    initial_message: string;
   }) {
-    return fetchWithAuth<SupportTicketItem>('/api/support/tickets', {
+    return fetchWithAuth<SupportTicketDetailItem>('/api/support/tickets', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        subject: payload.subject,
+        category: payload.category,
+        priority: (payload.priority || 'NORMAL').toUpperCase(),
+        initial_message: payload.initial_message,
+      }),
+    });
+  },
+
+  async replyTicket(ticketId: string, messageText: string) {
+    return fetchWithAuth<SupportMessageItem>(`/api/support/tickets/${ticketId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ message_text: messageText }),
     });
   },
 
   async getAdminTickets() {
-    return fetchWithAuth<SupportTicketItem[]>('/api/support/admin/tickets');
+    return fetchWithAuth<SupportTicketDetailItem[]>('/api/support/admin/tickets');
   },
 
   async updateTicketStatus(ticketId: string, status: string) {
-    return fetchWithAuth<SupportTicketItem>(`/api/support/admin/tickets/${ticketId}/status`, {
+    return fetchWithAuth<SupportTicketDetailItem>(`/api/support/admin/tickets/${ticketId}/status`, {
       method: 'PUT',
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status: status.toUpperCase() }),
     });
   },
 };

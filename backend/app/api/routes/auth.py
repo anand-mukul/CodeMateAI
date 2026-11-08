@@ -35,11 +35,16 @@ from app.schemas.auth import (
     UserResponse,
     VerifyEmailRequest,
     DeviceRegisterRequest,
+    UpdateProfileRequest,
+    ChangePasswordRequest,
+    HandoffCreateResponse,
+    HandoffExchangeRequest,
 )
 from app.services.device_service import DeviceService
 from app.services.session_service import SessionService
 from app.services.subscription_service import SubscriptionService
 from app.services.notification_service import NotificationService
+from app.services.handoff_service import HandoffService
 from app.services.entitlement_service import get_current_user_and_session, get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -177,8 +182,13 @@ async def login_with_google(
     google_client_id = settings.GOOGLE_CLIENT_ID
 
     try:
-        is_live_google_id = google_client_id and not (
-            "your_google_client_id_here" in google_client_id or "mock" in google_client_id
+        is_live_google_id = (
+            settings.ENVIRONMENT != "test"
+            and google_client_id
+            and not (
+                "your_google_client_id_here" in google_client_id
+                or "mock" in google_client_id
+            )
         )
         if is_live_google_id:
             from google.oauth2 import id_token as google_id_token
@@ -475,4 +485,108 @@ async def reset_password_with_token(payload: ResetPasswordRequest, db: AsyncSess
 async def get_my_profile(user: User = Depends(get_current_user)):
     """Returns the authenticated user's profile details."""
     return user
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_my_profile(
+    payload: UpdateProfileRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Updates user display profile name."""
+    user.display_name = payload.display_name.strip()
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+async def change_password(
+    payload: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Securely updates password when authenticated, requiring current password verification."""
+    if not user.password_hash or not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect.",
+        )
+
+    valid_pwd, reason = validate_password_strength(payload.new_password)
+    if not valid_pwd:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
+
+    user.password_hash = hash_password(payload.new_password)
+    await db.commit()
+    return {"success": True, "message": "Password changed successfully."}
+
+
+@router.post("/handoff/create", response_model=HandoffCreateResponse)
+async def create_auth_handoff(
+    user: User = Depends(get_current_user),
+):
+    """
+    Generates a single-use, 60-second cryptographically secure handoff code for transitioning
+    from Chrome extension to Web portal without exposing long-lived tokens in URLs.
+    """
+    code, expires_in = await HandoffService.create_handoff_code(user.id, ttl_seconds=60)
+    return HandoffCreateResponse(handoff_code=code, expires_in=expires_in)
+
+
+@router.post("/handoff/exchange", response_model=TokenResponse)
+async def exchange_auth_handoff(
+    payload: HandoffExchangeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    x_forwarded_for: Optional[str] = Header(default=None),
+):
+    """
+    Exchanges a single-use handoff code for web portal access and refresh tokens.
+    Enforces replay protection and immediately consumes the code.
+    """
+    user_id = await HandoffService.consume_handoff_code(payload.handoff_code)
+
+    query = select(User).where(User.id == user_id)
+    result = await db.execute(query)
+    user = result.scalars().first()
+
+    if not user or (user.account_status or "").upper() != AccountStatus.ACTIVE.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is disabled or suspended.",
+        )
+
+    # Derive privacy-conscious IP hash
+    client_ip = (
+        x_forwarded_for.split(",")[0].strip()
+        if x_forwarded_for
+        else request.client.host
+        if request.client
+        else "unknown"
+    )
+    ip_hash = hash_token(client_ip)[:16]
+    user_agent = request.headers.get("user-agent", "")
+
+    # Create active web portal session
+    session, access_token, raw_refresh_token = await SessionService.create_session(
+        db=db,
+        user=user,
+        device_id="web_portal",
+        ip_hash=ip_hash,
+        user_agent=user_agent,
+    )
+
+    user.last_login_at = utc_now()
+    await db.commit()
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=raw_refresh_token,
+        token_type="bearer",
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user=UserResponse.model_validate(user),
+    )
+
+
 

@@ -202,7 +202,7 @@ class SubscriptionService:
         for s in old_subs_res.scalars().all():
             if s.plan_id == plan_id and ensure_utc(s.current_period_end) and ensure_utc(s.current_period_end) > now:
                 active_same = s
-            s.status = "upgraded" if s.plan_id != plan_id else "renewed"
+            s.status = SubscriptionStatus.EXPIRED.value
 
         base_time = ensure_utc(active_same.current_period_end) if active_same else now
         period_end = base_time + timedelta(days=calc_days)

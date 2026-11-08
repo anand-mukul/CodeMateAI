@@ -1,7 +1,8 @@
 """
-CodeMate AI — Phase 7 Java Source Parser & AST Extractor
-Extracts packages, imports, class/interface declarations, constructors, methods,
-Spring annotations (@RestController, @Service, @Entity, @Transactional, etc.),
+CodeMate AI — Phase 7 Java Source Declaration & Symbol Extractor
+NOTE ON IMPLEMENTATION: This is a high-speed, regex-based symbol and declaration extractor,
+NOT a full compiler AST parser. It extracts packages, imports, class/interface declarations,
+constructors, method signatures (return types, parameter types, annotations), Spring annotations,
 and constructor injection dependencies from Java source code.
 """
 
@@ -265,11 +266,29 @@ class JavaParser:
 
     @classmethod
     def _parse_parameters(cls, raw: str) -> List[Dict[str, str]]:
-        """Parses method parameters into typed dictionaries."""
+        """Parses method parameters into typed dictionaries with generic type awareness."""
         if not raw or not raw.strip():
             return []
+        raw_params = []
+        curr = []
+        angle_depth = 0
+        for ch in raw:
+            if ch == "<":
+                angle_depth += 1
+                curr.append(ch)
+            elif ch == ">":
+                angle_depth = max(0, angle_depth - 1)
+                curr.append(ch)
+            elif ch == "," and angle_depth == 0:
+                raw_params.append("".join(curr).strip())
+                curr = []
+            else:
+                curr.append(ch)
+        if curr:
+            raw_params.append("".join(curr).strip())
+
         params = []
-        for p in raw.split(","):
+        for p in raw_params:
             p = p.strip()
             if not p:
                 continue

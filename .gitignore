@@ -32,9 +32,7 @@ codemate-phase0-poc/
 # ------------------------------------------------------------------------------
 # 3. Test Automation Scripts, Temp Profiles & Test Run Artifacts
 # ------------------------------------------------------------------------------
-backend/app/tests/
-test/
-tests/
+.pytest_cache/
 .test-chrome-profile*
 coverage/
 .nyc_output/
@@ -185,3 +183,5 @@ scripts/*
 !scripts/generate-icons.cjs
 
 backend/alembic/versions/8c937f1b2d4e_phase_8_schema.py
+backend/app/tests/*
+backend/alembic/versions/*

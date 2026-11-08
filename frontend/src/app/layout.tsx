@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
+import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
-  title: "CodeMate — The Intelligent Coding Platform",
-  description: "Modern coding companion for automated problem comprehension, progressive multi-file code completion, and cloud telemetry.",
+  title: "CodeMate AI — Intelligent Developer Companion",
+  description: "Silicon Valley-grade coding companion for automated problem comprehension, multi-file architecture, and telemetry.",
 };
 
 export default function RootLayout({
@@ -15,14 +16,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark h-full antialiased">
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100 selection:bg-indigo-500/30 selection:text-indigo-200">
-        <AuthProvider>
-          <TooltipProvider delay={150}>
-            {children}
-            <Toaster position="top-right" richColors />
-          </TooltipProvider>
-        </AuthProvider>
+    <html lang="en" suppressHydrationWarning className="h-full antialiased">
+      <body className="min-h-full flex flex-col bg-background text-foreground selection:bg-primary/20 selection:text-primary">
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <AuthProvider>
+            <TooltipProvider delay={150}>
+              {children}
+              <Toaster position="top-right" richColors />
+            </TooltipProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -18,7 +18,7 @@ from app.core.logging import logger
 from app.db.base import utc_now
 from app.models.user import User
 from app.models.subscription import Plan, Subscription, Payment, WebhookEvent
-from app.models.enums import PaymentStatus
+from app.models.enums import PaymentStatus, WebhookProcessingStatus, SubscriptionStatus
 from app.schemas.payment import (
     CreateOrderResponse,
     PaymentHistoryItem,
@@ -99,7 +99,7 @@ class PaymentService:
             provider_order_id=order_id,
             amount=final_price,
             currency=plan.currency,
-            payment_status="created",
+            payment_status=PaymentStatus.CREATED.value,
         )
         db.add(payment_record)
         await db.commit()
@@ -154,7 +154,7 @@ class PaymentService:
 
         if not is_valid:
             logger.error(f"[Razorpay] Signature mismatch for order {razorpay_order_id}")
-            payment.payment_status = "failed"
+            payment.payment_status = PaymentStatus.FAILED.value
             await db.commit()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -224,7 +224,7 @@ class PaymentService:
         event_res = await db.execute(event_query)
         existing_event = event_res.scalars().first()
 
-        if existing_event and existing_event.processing_status == "processed":
+        if existing_event and (existing_event.processing_status or "").upper() == WebhookProcessingStatus.PROCESSED.value:
             logger.info(f"[Webhook] Duplicate event {event_id} ignored (idempotent).")
             return WebhookProcessingResult(
                 status="duplicate",
@@ -239,7 +239,7 @@ class PaymentService:
                 provider="razorpay",
                 event_id=event_id,
                 event_type=event_type,
-                processing_status="processing",
+                processing_status=WebhookProcessingStatus.RECEIVED.value,
                 payload_preview=str(payload)[:500],
             )
             db.add(new_event)
@@ -271,7 +271,7 @@ class PaymentService:
             pay_res = await db.execute(pay_q)
             pay_rec = pay_res.scalars().first()
             if pay_rec:
-                pay_rec.payment_status = "failed"
+                pay_rec.payment_status = PaymentStatus.FAILED.value
 
         elif event_type == "subscription.halted":
             sub_id = payload.get("payload", {}).get("subscription", {}).get("entity", {}).get("id")
@@ -280,7 +280,7 @@ class PaymentService:
                 sub_res = await db.execute(sub_q)
                 sub_rec = sub_res.scalars().first()
                 if sub_rec:
-                    sub_rec.status = "halted"
+                    sub_rec.status = SubscriptionStatus.HALTED.value
 
         elif event_type == "subscription.cancelled":
             sub_id = payload.get("payload", {}).get("subscription", {}).get("entity", {}).get("id")
@@ -289,9 +289,9 @@ class PaymentService:
                 sub_res = await db.execute(sub_q)
                 sub_rec = sub_res.scalars().first()
                 if sub_rec:
-                    sub_rec.status = "cancelled"
+                    sub_rec.status = SubscriptionStatus.CANCELLED.value
 
-        existing_event.processing_status = "processed"
+        existing_event.processing_status = WebhookProcessingStatus.PROCESSED.value
         existing_event.processed_at = now
         await db.commit()
 

@@ -72,3 +72,45 @@ class ConstraintAnalyzer:
             "rationale": rat,
         }
 
+    @classmethod
+    def analyze_graph_taxonomy(cls, title: str, statement: str) -> Dict[str, Any]:
+        """
+        Detects whether a problem involves directed graphs, rooted trees, or dual-parent edges (LeetCode 685).
+        Returns classification and algorithmic directives.
+        """
+        full_text = f"{title or ''} {statement or ''}".lower()
+        is_directed = any(w in full_text for w in [
+            "directed", "directed graph", "parent", "in-degree", "out-degree",
+            "directed cycle", "rooted tree", "arborescence", "ancestor", "descendant"
+        ])
+        is_redundant_connection = "redundant connection" in full_text or ("redundant" in full_text and "edge" in full_text)
+        is_dual_parent_tree = is_directed and ("tree" in full_text or "root" in full_text or is_redundant_connection)
+
+        guidance = ""
+        if is_dual_parent_tree:
+            guidance = (
+                "\n\nCRITICAL ALGORITHMIC TAXONOMY — DIRECTED ROOTED TREE / REDUNDANT CONNECTION II:\n"
+                "- This problem is a DIRECTED graph rooted tree problem (similar to LeetCode 685).\n"
+                "- DO NOT use naive undirected Disjoint Set Union (DSU) directly on all edges!\n"
+                "- REQUIRED DUAL-CONDITION LOGIC:\n"
+                "  1. Track in-degrees and incoming parents for every node.\n"
+                "  2. If a node has TWO incoming edges (cand1 and cand2):\n"
+                "     * Temporarily skip cand2, test remaining edges with DSU or topological sort.\n"
+                "     * If skipping cand2 leaves no directed cycles and all nodes connected, cand2 is the answer.\n"
+                "     * Otherwise, cand1 is the answer.\n"
+                "  3. If NO node has two incoming edges (pure directed cycle):\n"
+                "     * Standard cycle detection identifies the edge creating the cycle.\n"
+            )
+        elif is_directed:
+            guidance = (
+                "\n\nALGORITHMIC TAXONOMY — DIRECTED GRAPH:\n"
+                "- Edges are directed (u -> v). Use topological sorting (Kahn's or DFS), Kosaraju/Tarjan for SCCs, "
+                "or directed cycle detection. Do not treat edges as bidirectional.\n"
+            )
+
+        return {
+            "is_directed": is_directed,
+            "is_dual_parent_tree": is_dual_parent_tree,
+            "guidance": guidance,
+        }
+

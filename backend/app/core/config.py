@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # Security & CORS
     ALLOWED_ORIGINS: str = Field(
-        default="http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,https://codemate-web.vercel.app",
+        default="http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,https://codemate-web.vercel.app,https://codemate-frontend.onrender.com",
         description="Comma-separated allowed CORS origins",
     )
     FRONTEND_URL: str = Field(
@@ -48,11 +48,11 @@ class Settings(BaseSettings):
         default="gemini",
         description="Default AI Provider fallback",
     )
-    AI_MODEL: str = Field(default="gemini-3.5-flash", description="Target model name")
+    AI_MODEL: str = Field(default="gemini-3.8-flash", description="Target model name")
     AI_API_KEY: Optional[str] = Field(default=None, description="API Key for the chosen provider")
     AI_BASE_URL: Optional[str] = Field(default=None, description="Custom API Base URL if applicable")
     GEMINI_API_KEY: Optional[str] = Field(default=None, description="Google Gemini API Key")
-    GEMINI_MODEL: Optional[str] = Field(default="gemini-3.5-flash", description="Google Gemini model name")
+    GEMINI_MODEL: Optional[str] = Field(default="gemini-3.8-flash", description="Google Gemini model name")
     OPENAI_API_KEY: Optional[str] = Field(default=None, description="OpenAI API Key")
     OPENAI_MODEL: Optional[str] = Field(default=None, description="OpenAI model name")
     OPENROUTER_API_KEY: Optional[str] = Field(default=None, description="OpenRouter API Key")
@@ -62,13 +62,13 @@ class Settings(BaseSettings):
     ANTHROPIC_MODEL: Optional[str] = Field(default="claude-3-5-sonnet-20241022", description="Claude model")
     ANTHROPIC_BASE_URL: Optional[str] = Field(default="https://api.anthropic.com/v1", description="Claude API Base URL")
     DEEPSEEK_API_KEY: Optional[str] = Field(default=None, description="DeepSeek API Key")
-    DEEPSEEK_MODEL: Optional[str] = Field(default="deepseek-chat", description="DeepSeek model")
-    DEEPSEEK_BASE_URL: Optional[str] = Field(default="https://api.deepseek.com/v1", description="DeepSeek Base URL")
+    DEEPSEEK_MODEL: Optional[str] = Field(default="deepseek-flash", description="DeepSeek model (deepseek-flash, deepseek-v4-pro)")
+    DEEPSEEK_BASE_URL: Optional[str] = Field(default="https://api.deepseek.com", description="DeepSeek Base URL")
     XAI_API_KEY: Optional[str] = Field(default=None, description="xAI Grok API Key")
     XAI_MODEL: Optional[str] = Field(default="grok-2", description="Grok model")
     XAI_BASE_URL: Optional[str] = Field(default="https://api.x.ai/v1", description="xAI Base URL")
     AI_TEMPERATURE: float = Field(default=0.2, ge=0.0, le=1.0, description="Model generation temperature")
-    AI_MAX_OUTPUT_TOKENS: int = Field(default=4096, ge=256, le=16384, description="Max output tokens")
+    AI_MAX_OUTPUT_TOKENS: int = Field(default=8192, ge=256, le=16384, description="Max output tokens")
     AI_TIMEOUT_SECONDS: float = Field(default=60.0, ge=5.0, le=120.0, description="HTTP request timeout in seconds")
     AI_MAX_RETRIES: int = Field(default=2, ge=0, le=5, description="Max retry attempts on transient network error")
 
@@ -86,13 +86,26 @@ class Settings(BaseSettings):
     DB_POOL_RECYCLE: int = Field(default=1800, description="PostgreSQL pool recycle timeout in seconds")
     DB_POOL_TIMEOUT: int = Field(default=30, description="PostgreSQL pool timeout in seconds")
 
-    # Ephemeral Task Working Memory (Upstash Redis)
+    # Ephemeral Task Working Memory & Cache (Redis / Upstash)
+    REDIS_URL: Optional[str] = Field(
+        default=None, description="Redis connection URL (e.g. rediss://default:...@host:6379)"
+    )
     UPSTASH_REDIS_REST_URL: Optional[str] = Field(
         default=None, description="Upstash Redis REST URL for ephemeral task context"
     )
     UPSTASH_REDIS_REST_TOKEN: Optional[str] = Field(
         default=None, description="Upstash Redis REST Token"
     )
+
+    @property
+    def redis_url_normalized(self) -> Optional[str]:
+        """Ensures TLS scheme 'rediss://' is used when connecting to Upstash or TLS endpoints."""
+        if not self.REDIS_URL:
+            return None
+        url = self.REDIS_URL.strip()
+        if "upstash.io" in url.lower() and url.startswith("redis://"):
+            return url.replace("redis://", "rediss://", 1)
+        return url
 
     @property
     def async_database_url(self) -> str:
@@ -177,19 +190,40 @@ class Settings(BaseSettings):
     def resolve_provider_credentials(self) -> "Settings":
         provider = self.AI_PROVIDER.lower().strip()
         if not self.AI_API_KEY:
-            if provider == "gemini" and self.GEMINI_API_KEY:
+            if provider == "deepseek" and self.DEEPSEEK_API_KEY:
+                self.AI_API_KEY = self.DEEPSEEK_API_KEY
+            elif provider == "gemini" and self.GEMINI_API_KEY:
                 self.AI_API_KEY = self.GEMINI_API_KEY
             elif provider == "openai" and self.OPENAI_API_KEY:
                 self.AI_API_KEY = self.OPENAI_API_KEY
+            elif self.DEEPSEEK_API_KEY:
+                self.AI_API_KEY = self.DEEPSEEK_API_KEY
             elif self.GEMINI_API_KEY:
                 self.AI_API_KEY = self.GEMINI_API_KEY
             elif self.OPENAI_API_KEY:
                 self.AI_API_KEY = self.OPENAI_API_KEY
 
-        if provider == "gemini" and self.GEMINI_MODEL:
+        if provider == "deepseek" and self.DEEPSEEK_MODEL:
+            self.AI_MODEL = self.DEEPSEEK_MODEL
+        elif provider == "gemini" and self.GEMINI_MODEL:
             self.AI_MODEL = self.GEMINI_MODEL
         elif provider == "openai" and self.OPENAI_MODEL:
             self.AI_MODEL = self.OPENAI_MODEL
+
+        # Resolve Upstash REST configuration from REDIS_URL if not explicitly set
+        if self.REDIS_URL:
+            import urllib.parse
+            try:
+                parsed = urllib.parse.urlparse(self.REDIS_URL)
+                hostname = parsed.hostname or ""
+                if "upstash.io" in hostname.lower():
+                    if not self.UPSTASH_REDIS_REST_URL:
+                        self.UPSTASH_REDIS_REST_URL = f"https://{hostname}"
+                    if not self.UPSTASH_REDIS_REST_TOKEN and parsed.password:
+                        self.UPSTASH_REDIS_REST_TOKEN = parsed.password
+            except Exception:
+                pass
+
         return self
 
 

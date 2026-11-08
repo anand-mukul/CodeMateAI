@@ -35,6 +35,8 @@ async def readiness_check():
         db_health = await check_db_health()
         provider = ProviderManager.get_provider()
         conn = await provider.check_connection()
+        from app.services.upstash_service import UpstashRedisService
+        redis_health = await UpstashRedisService.check_connection()
         is_ready = conn.get("available", False) and db_health.get("status") == "healthy"
         return {
             "status": "ready" if is_ready else "degraded",
@@ -42,6 +44,7 @@ async def readiness_check():
             "database": db_health,
             "provider": provider.provider_name,
             "model": provider.model_name,
+            "redis": redis_health,
             "timestamp": time.time(),
         }
     except Exception as exc:

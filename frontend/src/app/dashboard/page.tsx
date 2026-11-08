@@ -1,342 +1,359 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  AppSidebar,
-  TabKey,
-} from "@/components/Sidebar";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { KPICard } from "@/components/KPICard";
-import { ExtensionSyncCard } from "@/components/ExtensionSyncCard";
-import { DeviceManager } from "@/components/DeviceManager";
-import { PricingTable } from "@/components/PricingTable";
-import { AdminConsole } from "@/components/AdminConsole";
-import { SupportDesk } from "@/components/SupportDesk";
-import { TelemetryChart } from "@/components/TelemetryChart";
-import { AIWorkspacePlayground } from "@/components/AIElements";
+  Zap,
+  CreditCard,
+  Laptop,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowRight,
+  Sparkles,
+  Terminal,
+  Activity,
+  Layers,
+  ExternalLink,
+  ShieldCheck,
+  RefreshCw,
+  Clock,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
   subscriptionApi,
   SubscriptionSummary,
-  fetchWithAuth,
-  parseErrorMessage,
+  devicesApi,
+  DeviceItem,
   PLAN_FREE,
-  PLAN_CORE_PASS,
-  PLAN_AUTOPILOT_PASS,
 } from "@/lib/api";
-import { toast } from "sonner";
-import {
-  Zap,
-  ShieldCheck,
-  CheckCircle2,
-  AlertTriangle,
-  Lock,
-  ArrowRight,
-  Sparkles,
-  KeyRound,
-  Laptop,
-  CreditCard,
-  User,
-  Loader2,
-} from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
-export default function DashboardPage() {
+export default function CustomerDashboardPage() {
   const router = useRouter();
-  const { user, token, isLoading, isAdmin, isSupport, resendVerification, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabKey>("overview");
-  const [subscription, setSubscription] = useState<SubscriptionSummary | null>(null);
-  const [loadingSub, setLoadingSub] = useState(false);
-  const [verifying, setVerifying] = useState(false);
+  const { user, resendVerification } = useAuth();
+  const [subscription, setSubscription] = React.useState<SubscriptionSummary | null>(null);
+  const [devices, setDevices] = React.useState<DeviceItem[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [verifying, setVerifying] = React.useState(false);
+  const [verificationSent, setVerificationSent] = React.useState(false);
 
-  // Redirect to /login if unauthenticated
-  useEffect(() => {
-    if (!isLoading && !token) {
-      router.push("/login");
-    }
-  }, [isLoading, token, router]);
+  const loadData = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      const [subData, devicesData] = await Promise.allSettled([
+        subscriptionApi.getMySubscription(),
+        devicesApi.list(),
+      ]);
 
-  // Handle URL ?tab= deep links
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get("tab")?.toLowerCase();
-      if (tabParam === "plans" || tabParam === "pricing" || tabParam === "billing") {
-        setActiveTab("billing");
-      } else if (tabParam === "admin") {
-        setActiveTab("admin");
-      } else if (tabParam === "devices") {
-        setActiveTab("devices");
-      } else if (tabParam === "support") {
-        setActiveTab("support");
-      } else if (tabParam === "sync") {
-        setActiveTab("sync");
-      } else if (tabParam === "settings") {
-        setActiveTab("settings");
-      } else if (tabParam === "overview") {
-        setActiveTab("overview");
-      }
+      if (subData.status === "fulfilled") setSubscription(subData.value);
+      if (devicesData.status === "fulfilled") setDevices(devicesData.value);
+    } catch (err) {
+      console.error("Failed to load dashboard data:", err);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  // Load subscription details
-  useEffect(() => {
-    if (token) {
-      setLoadingSub(true);
-      subscriptionApi
-        .getMySubscription()
-        .then((res) => setSubscription(res))
-        .catch(() => {
-          // ignore if new user with free plan
-        })
-        .finally(() => setLoadingSub(false));
-    }
-  }, [token]);
+  React.useEffect(() => {
+    loadData();
+  }, [loadData]);
 
-  const handleResendVerification = async () => {
+  const handleResend = async () => {
     try {
       setVerifying(true);
       await resendVerification();
-      toast.success("Verification link sent! Please check your email inbox.");
+      setVerificationSent(true);
     } catch (err) {
-      toast.error(parseErrorMessage(err, "Failed to send verification email."));
+      console.error("Failed to resend verification:", err);
     } finally {
       setVerifying(false);
     }
   };
 
-  const handleLogoutAll = async () => {
-    if (!confirm("This will sign out all browsers and extensions linked to your account.")) return;
-    try {
-      await fetchWithAuth("/api/auth/logout-all", { method: "POST" });
-      toast.success("All sessions have been revoked.");
-      await logout();
-      router.push("/login");
-    } catch (err) {
-      toast.error(parseErrorMessage(err));
-    }
-  };
+  const isPaid = subscription && subscription.plan_id !== PLAN_FREE && subscription.status === "active";
+  const used = subscription?.daily_ai_solves_used ?? 0;
+  const limit = subscription?.ai_usage_limit ?? 5;
+  const remaining = Math.max(0, limit - used);
+  const quotaPercent = Math.min(100, Math.round((used / (limit || 1)) * 100));
 
-  if (isLoading || (!user && token)) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-400">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
-        <p className="text-xs font-mono">Authenticating CodeMate Session...</p>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return null;
-  }
-
-  const isPaid =
-    subscription?.status === "active" &&
-    (subscription.plan_id === PLAN_CORE_PASS ||
-      subscription.plan_id === PLAN_AUTOPILOT_PASS ||
-      subscription.plan_id === "core_daily" ||
-      subscription.plan_id === "autopilot_weekly");
-  const quotaDisplay = isPaid
-    ? "Unlimited"
-    : `${subscription?.daily_ai_solves_used || 0} / ${subscription?.ai_usage_limit || 500}`;
-  const quotaProgress = isPaid
-    ? 100
-    : Math.min(100, Math.round(((subscription?.daily_ai_solves_used || 0) / (subscription?.ai_usage_limit || 500)) * 100));
+  const activeDeviceCount = devices.filter((d) => d.device_status === "active").length;
 
   return (
-    <SidebarProvider defaultOpen={true}>
-      <div className="flex min-h-screen w-full bg-zinc-950 overflow-hidden text-zinc-100">
-        {/* Shadcn Sidebar */}
-        <AppSidebar activeTab={activeTab} onSelectTab={setActiveTab} />
+    <div className="space-y-6">
+      {/* Unverified Email Warning Banner */}
+      {user && !user.email_verified && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="size-4 text-amber-500 shrink-0" />
+            <span className="text-foreground">
+              Your email <span className="font-mono font-medium">{user.email}</span> is unverified. Verify your address to secure subscription recovery.
+            </span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleResend}
+            disabled={verifying || verificationSent}
+            className="text-xs h-7 border-amber-500/30 text-amber-500 hover:bg-amber-500/20 shrink-0 self-start sm:self-auto"
+          >
+            {verificationSent ? "Email Sent!" : verifying ? "Sending..." : "Resend Link"}
+          </Button>
+        </div>
+      )}
 
-        {/* Main Workspace Body */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-          {/* Top Header Bar */}
-          <header className="h-16 px-6 lg:px-8 border-b border-white/[0.08] flex items-center justify-between shrink-0 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-20">
-            <div className="flex items-center gap-3">
-              <SidebarTrigger className="text-zinc-400 hover:text-white cursor-pointer" />
-              <div className="h-4 w-px bg-white/[0.1] hidden sm:block" />
-              <h1 className="text-sm font-semibold text-white capitalize tracking-tight">
-                {activeTab === "overview" && "Workspace Telemetry"}
-                {activeTab === "sync" && "Extension Cloud Synchronization"}
-                {activeTab === "devices" && "Registered Hardware Devices"}
-                {activeTab === "billing" && "Subscription & Billing Plans"}
-                {activeTab === "settings" && "Account & Security Controls"}
-                {activeTab === "admin" && "Administrative System Console"}
-                {activeTab === "support" && "Help & Ticket Queue"}
+      {/* Welcome Banner */}
+      <div className="rounded-xl border border-border bg-card p-6 shadow-2xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+                Welcome back, {user?.display_name || "Developer"}
               </h1>
+              <Badge variant="outline" className="font-mono text-[10px]">
+                {subscription?.plan_name ? subscription.plan_name.replace("PLAN_", "") : "FREE"}
+              </Badge>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Account ID: <span className="font-mono">{user?.id?.slice(0, 12)}...</span> • Member since{" "}
+              {user?.created_at ? new Date(user.created_at).toLocaleDateString() : "2026"}
+            </p>
+          </div>
 
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[11px] font-medium font-mono">API Operational</span>
-              </div>
-
-              <div className="h-4 w-px bg-white/[0.1]" />
-
-              <div className="text-xs text-zinc-400 font-mono">
-                v2.4.0 <span className="text-zinc-600">•</span> prod
-              </div>
-            </div>
-          </header>
-
-          {/* Content Container */}
-          <main className="p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6">
-            {/* Email Verification Alert Banner (if unverified) */}
-            {!user.email_verified && (
-              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-200">
-                <div className="flex items-center gap-2.5">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>
-                    Your email <strong>{user.email}</strong> is unverified. All AI generation features require a verified email. Please check your inbox.
-                  </span>
-                </div>
-                <button
-                  onClick={handleResendVerification}
-                  disabled={verifying}
-                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold transition active:scale-95 cursor-pointer disabled:opacity-50 text-xs shrink-0"
-                >
-                  {verifying ? "Sending..." : "Resend Verification Email"}
-                </button>
-              </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadData}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+              <span>Refresh</span>
+            </Button>
+            {!isPaid && (
+              <Button
+                size="sm"
+                onClick={() => router.push("/dashboard/subscription")}
+                className="h-8 gap-1.5 text-xs shadow-xs"
+              >
+                <Sparkles className="size-3.5" />
+                <span>Upgrade Plan</span>
+              </Button>
             )}
-
-            {/* TAB 1: OVERVIEW */}
-            {activeTab === "overview" && (
-              <div className="space-y-6">
-                {/* Metric Cards Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <KPICard
-                    title="Daily AI Solves"
-                    value={quotaDisplay}
-                    subtitle={isPaid ? "Unlimited High-Speed Quota" : "Resets daily at 00:00 UTC"}
-                    progress={quotaProgress}
-                    badge={{
-                      text: isPaid ? "Unlimited" : "Active",
-                      variant: isPaid ? "indigo" : "default",
-                    }}
-                  />
-
-                  <KPICard
-                    title="Current Tier"
-                    value={subscription?.plan_name || "Free Tier"}
-                    subtitle={
-                      isPaid
-                        ? `Valid until ${subscription?.current_period_end ? new Date(subscription.current_period_end).toLocaleDateString() : "Active"}`
-                        : "Upgrade to Core Pass for unlimited access"
-                    }
-                    badge={{
-                      text: isPaid ? "Paid Active" : "Free Plan",
-                      variant: isPaid ? "success" : "default",
-                    }}
-                    onClick={() => setActiveTab("billing")}
-                  />
-
-                  <KPICard
-                    title="Registered Devices"
-                    value={`1 / ${subscription?.device_limit || 1}`}
-                    subtitle="Hardware Bound Extension Slots"
-                    badge={{ text: "Hardware Bound", variant: "default" }}
-                    onClick={() => setActiveTab("devices")}
-                  />
-
-                  <KPICard
-                    title="Gateway Latency"
-                    value="118 ms"
-                    subtitle="Fastest route to Gemini 2.5 Flash"
-                    badge={{ text: "Sub-Second", variant: "success" }}
-                  />
-                </div>
-
-                {/* Shadcn Telemetry Chart (Volume & Latency over time) */}
-                <TelemetryChart />
-
-                {/* 1-Click Extension Sync Card */}
-                <ExtensionSyncCard />
-
-                {/* AI Elements Playground */}
-                <AIWorkspacePlayground />
-              </div>
-            )}
-
-            {/* TAB 2: EXTENSION SYNC */}
-            {activeTab === "sync" && <ExtensionSyncCard />}
-
-            {/* TAB 3: DEVICES */}
-            {activeTab === "devices" && <DeviceManager />}
-
-            {/* TAB 4: BILLING */}
-            {activeTab === "billing" && (
-              <div className="space-y-6">
-                <PricingTable
-                  currentSub={subscription}
-                  onSuccess={() => {
-                    subscriptionApi.getMySubscription().then(setSubscription);
-                  }}
-                />
-              </div>
-            )}
-
-            {/* TAB 5: SETTINGS */}
-            {activeTab === "settings" && (
-              <div className="max-w-2xl space-y-6">
-                <Card className="bg-zinc-950/80 border-white/[0.08]">
-                  <CardContent className="p-6 space-y-4">
-                    <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                      <User className="w-4 h-4 text-indigo-400" />
-                      <span>Account Profile</span>
-                    </h3>
-                    <div className="grid grid-cols-2 gap-4 text-xs">
-                      <div>
-                        <span className="text-zinc-500 block">Full Name</span>
-                        <span className="font-medium text-white">{user.display_name}</span>
-                      </div>
-                      <div>
-                        <span className="text-zinc-500 block">Email Address</span>
-                        <span className="font-mono text-white">{user.email}</span>
-                      </div>
-                      <div>
-                        <span className="text-zinc-500 block">Account Role</span>
-                        <span className="font-mono text-indigo-400 uppercase">{user.role}</span>
-                      </div>
-                      <div>
-                        <span className="text-zinc-500 block">Account Status</span>
-                        <span className="font-mono text-emerald-400 uppercase">{user.account_status}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-zinc-950/80 border-white/[0.08]">
-                  <CardContent className="p-6 space-y-4">
-                    <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                      <Lock className="w-4 h-4 text-amber-400" />
-                      <span>Session Security</span>
-                    </h3>
-                    <p className="text-xs text-zinc-400">
-                      If you suspect unauthorized activity or want to sign out everywhere:
-                    </p>
-                    <button
-                      onClick={handleLogoutAll}
-                      className="px-4 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/25 text-xs font-semibold transition cursor-pointer"
-                    >
-                      Terminate All Sessions &amp; Revoke Everywhere
-                    </button>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            {/* TAB 6: ADMIN */}
-            {activeTab === "admin" && isAdmin && <AdminConsole />}
-
-            {/* TAB 7: SUPPORT */}
-            {activeTab === "support" && <SupportDesk />}
-          </main>
+          </div>
         </div>
       </div>
-    </SidebarProvider>
+
+      {/* High-Density Overview KPI Grid */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Daily Quota Card */}
+        <div className="rounded-xl border border-border bg-card p-4 shadow-2xs flex flex-col justify-between space-y-3">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+            <span>Daily AI Solves</span>
+            <Zap className="size-4 text-primary" />
+          </div>
+          <div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-foreground">
+                {used} / {limit}
+              </span>
+              <span className="text-xs text-muted-foreground font-mono">used</span>
+            </div>
+            <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full transition-all ${
+                  quotaPercent > 90 ? "bg-rose-500" : quotaPercent > 70 ? "bg-amber-500" : "bg-primary"
+                }`}
+                style={{ width: `${quotaPercent}%` }}
+              />
+            </div>
+          </div>
+          <span className="text-[11px] text-muted-foreground font-mono">
+            {remaining} solves remaining today
+          </span>
+        </div>
+
+        {/* Active Plan Card */}
+        <div className="rounded-xl border border-border bg-card p-4 shadow-2xs flex flex-col justify-between space-y-3">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+            <span>Subscription Tier</span>
+            <CreditCard className="size-4 text-emerald-500" />
+          </div>
+          <div>
+            <span className="text-xl font-bold font-mono text-foreground block">
+              {subscription?.plan_name ? subscription.plan_name.replace("PLAN_", "").replace("_", " ") : "Free Tier"}
+            </span>
+            <span className="text-xs text-muted-foreground font-mono">
+              Status: <span className="text-emerald-500 uppercase font-semibold">{subscription?.status || "ACTIVE"}</span>
+            </span>
+          </div>
+          <Link
+            href="/dashboard/subscription"
+            className="text-[11px] text-primary hover:underline font-medium inline-flex items-center gap-1"
+          >
+            <span>Manage billing & limits</span>
+            <ArrowRight className="size-3" />
+          </Link>
+        </div>
+
+        {/* Registered Devices Card */}
+        <div className="rounded-xl border border-border bg-card p-4 shadow-2xs flex flex-col justify-between space-y-3">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+            <span>Extension Devices</span>
+            <Laptop className="size-4 text-sky-500" />
+          </div>
+          <div>
+            <span className="text-2xl font-bold font-mono text-foreground">
+              {activeDeviceCount} / {subscription?.device_limit ?? 1}
+            </span>
+            <span className="text-xs text-muted-foreground font-mono block">Registered devices</span>
+          </div>
+          <Link
+            href="/dashboard/devices"
+            className="text-[11px] text-primary hover:underline font-medium inline-flex items-center gap-1"
+          >
+            <span>Inspect devices & sessions</span>
+            <ArrowRight className="size-3" />
+          </Link>
+        </div>
+
+        {/* Quota Reset Schedule */}
+        <div className="rounded-xl border border-border bg-card p-4 shadow-2xs flex flex-col justify-between space-y-3">
+          <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+            <span>Quota Refresh</span>
+            <Clock className="size-4 text-amber-500" />
+          </div>
+          <div>
+            <span className="text-2xl font-bold font-mono text-foreground">
+              00:00 UTC
+            </span>
+            <span className="text-xs text-muted-foreground block">Daily auto-reset</span>
+          </div>
+          <span className="text-[11px] text-muted-foreground">
+            Limits replenish every midnight
+          </span>
+        </div>
+      </div>
+
+      {/* Main Grid: Extension Setup & Quick Navigation */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Chrome Extension Integration Guide */}
+        <div className="rounded-xl border border-border bg-card p-5 lg:col-span-2 shadow-2xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <Terminal className="size-4 text-primary" />
+              <h3 className="text-sm font-semibold text-foreground">Chrome Extension Pairing</h3>
+            </div>
+            <span className="text-xs font-mono text-muted-foreground">v1.0.0 Ready</span>
+          </div>
+
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            CodeMate AI operates directly inside your browser alongside LeetCode, HackerRank, Codeforces, and web IDEs. Pair your account with the extension for instant code generation, AST syntax debugging, and multi-file reasoning.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+            <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-1">
+              <span className="font-mono text-xs font-bold text-foreground block">1. Install</span>
+              <p className="text-[11px] text-muted-foreground leading-normal">
+                Load the CodeMate extension in Chrome Developer Mode or Chrome Web Store.
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-1">
+              <span className="font-mono text-xs font-bold text-foreground block">2. Connect</span>
+              <p className="text-[11px] text-muted-foreground leading-normal">
+                Click &quot;Connect to Portal&quot; inside the extension popup to bind your device.
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-1">
+              <span className="font-mono text-xs font-bold text-foreground block">3. Solve</span>
+              <p className="text-[11px] text-muted-foreground leading-normal">
+                Trigger Side Panel (<span className="font-mono text-[10px]">Ctrl+Shift+U</span>) on any coding challenge.
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-2 flex flex-wrap items-center gap-3">
+            <Link
+              href="/dashboard/devices"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors shadow-xs"
+            >
+              <Laptop className="size-3.5" />
+              <span>Manage Connected Devices</span>
+            </Link>
+            <Link
+              href="/dashboard/usage"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+            >
+              <Activity className="size-3.5 text-muted-foreground" />
+              <span>View Usage Activity</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* Quick Account Shortcuts */}
+        <div className="rounded-xl border border-border bg-card p-5 shadow-2xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground">Account Shortcuts</h3>
+              <span className="text-xs font-mono text-muted-foreground">Self-Service</span>
+            </div>
+
+            <div className="mt-4 space-y-2.5">
+              <Link
+                href="/dashboard/subscription"
+                className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs hover:bg-accent transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <CreditCard className="size-4 text-primary" />
+                  <span className="font-medium text-foreground">Upgrade / Change Plan</span>
+                </div>
+                <ArrowRight className="size-3 text-muted-foreground" />
+              </Link>
+
+              <Link
+                href="/dashboard/billing"
+                className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs hover:bg-accent transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Layers className="size-4 text-emerald-500" />
+                  <span className="font-medium text-foreground">Payment Receipts & History</span>
+                </div>
+                <ArrowRight className="size-3 text-muted-foreground" />
+              </Link>
+
+              <Link
+                href="/dashboard/support"
+                className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs hover:bg-accent transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="size-4 text-sky-500" />
+                  <span className="font-medium text-foreground">Contact Support Desk</span>
+                </div>
+                <ArrowRight className="size-3 text-muted-foreground" />
+              </Link>
+
+              <Link
+                href="/dashboard/security"
+                className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs hover:bg-accent transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="size-4 text-amber-500" />
+                  <span className="font-medium text-foreground">Password & Active Sessions</span>
+                </div>
+                <ArrowRight className="size-3 text-muted-foreground" />
+              </Link>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-lg bg-primary/5 p-3 border border-primary/20 text-xs">
+            <span className="font-semibold text-primary block">Individual Developer SaaS</span>
+            <span className="text-[11px] text-muted-foreground mt-0.5 block">
+              Direct access to DeepSeek reasoning models, compiler sandbox repair, and AST analysis.
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

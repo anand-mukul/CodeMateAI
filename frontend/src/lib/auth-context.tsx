@@ -63,24 +63,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // 1. Ingest session token from extension deep-link query parameter (?session_token=...)
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
-      const sessionToken = url.searchParams.get("session_token");
-      const refreshToken = url.searchParams.get("refresh_token");
-      if (sessionToken) {
-        localStorage.setItem("codemate_web_token", sessionToken);
-        if (refreshToken) {
-          localStorage.setItem("codemate_refresh_token", refreshToken);
-        }
+      const handoffCode = url.searchParams.get("handoff_code");
+      const legacySessionToken = url.searchParams.get("session_token");
+      const legacyRefreshToken = url.searchParams.get("refresh_token");
+
+      // Immediately scrub sensitive tokens and handoff codes from URL to prevent leakage
+      // into browser history, server logs, analytics, or referrers
+      if (handoffCode || legacySessionToken || legacyRefreshToken) {
+        url.searchParams.delete("handoff_code");
         url.searchParams.delete("session_token");
         url.searchParams.delete("refresh_token");
         window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ""));
       }
 
-      // 2. Listen for bi-directional auth sync event from extension content script
+      // 1. Preferred secure single-use handoff code exchange
+      if (handoffCode) {
+        authApi
+          .exchangeHandoffCode(handoffCode)
+          .then((res) => {
+            setToken(res.access_token);
+            setUser(res.user);
+            refreshUser();
+          })
+          .catch((err) => {
+            console.error("[CodeMate Auth] Single-use handoff code exchange failed:", err);
+            refreshUser();
+          });
+      } else if (legacySessionToken) {
+        // Fallback for transition
+        localStorage.setItem("codemate_web_token", legacySessionToken);
+        if (legacyRefreshToken) {
+          localStorage.setItem("codemate_refresh_token", legacyRefreshToken);
+        }
+        refreshUser();
+      }
+
+      // 2. Listen for bi-directional auth sync event with strict origin & payload schema validation
       const handleSyncMessage = (event: MessageEvent) => {
-        if (event.data?.type === "CODEMATE_EXT_AUTH_SYNC" && event.data?.tokens?.access_token) {
+        // Validate exact origin and same-window source (prevents malicious iframes/external origins)
+        if (event.origin !== window.location.origin || event.source !== window) {
+          return;
+        }
+
+        if (
+          event.data &&
+          typeof event.data === "object" &&
+          event.data.type === "CODEMATE_EXT_AUTH_SYNC" &&
+          event.data.tokens &&
+          typeof event.data.tokens.access_token === "string"
+        ) {
           const { access_token, refresh_token: rToken, user: extUser } = event.data.tokens;
           const currentToken = localStorage.getItem("codemate_web_token");
           if (currentToken !== access_token) {
@@ -95,8 +128,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       window.addEventListener("message", handleSyncMessage);
 
-      // Request credentials from extension if installed and logged in
-      window.postMessage({ type: "CODEMATE_REQUEST_AUTH_SYNC" }, "*");
+      // Request credentials from extension if installed and logged in (targetOrigin strictly window.location.origin)
+      window.postMessage({ type: "CODEMATE_REQUEST_AUTH_SYNC" }, window.location.origin);
 
       return () => {
         window.removeEventListener("message", handleSyncMessage);
@@ -113,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(resp.access_token);
     setUser(resp.user);
 
-    // Broadcast auth sync to extension
+    // Broadcast auth sync to extension with explicit targetOrigin (never wildcard '*')
     if (typeof window !== "undefined") {
       window.postMessage(
         {
@@ -124,7 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             user: resp.user,
           },
         },
-        "*"
+        window.location.origin
       );
     }
   };
@@ -139,9 +172,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setToken(null);
 
-    // Broadcast logout sync to extension
+    // Broadcast logout sync to extension with explicit targetOrigin
     if (typeof window !== "undefined") {
-      window.postMessage({ type: "CODEMATE_WEB_LOGOUT_SYNC" }, "*");
+      window.postMessage({ type: "CODEMATE_WEB_LOGOUT_SYNC" }, window.location.origin);
     }
   };
 

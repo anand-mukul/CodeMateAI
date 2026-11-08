@@ -13,19 +13,13 @@ export default function PricingPage() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      const token = params.get("token") || params.get("session_token");
       const coupon = params.get("coupon") || params.get("coupon_code");
-
-      if (token) {
-        localStorage.setItem("codemate_web_token", token);
-        refreshUser();
-      }
 
       if (coupon) {
         setInitialCoupon(coupon.toUpperCase());
       }
     }
-  }, [refreshUser]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col selection:bg-indigo-500/30 selection:text-indigo-200">

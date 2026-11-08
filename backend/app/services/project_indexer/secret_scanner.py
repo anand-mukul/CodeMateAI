@@ -16,11 +16,17 @@ SECRET_PATTERNS: List[Tuple[str, re.Pattern]] = [
     # Generic API Keys & Secrets in properties/json
     ("ASSIGNED_SECRET", re.compile(r"(?i)(?:api[_-]?key|secret|password|passwd|token|auth_token)\s*[:=]\s*['\"]?([a-zA-Z0-9_\-\.\$\!\@\#\%\^\&\*]{8,128})['\"]?")),
     
-    # Google / Gemini API Keys
-    ("GEMINI_API_KEY", re.compile(r"AIza[0-9A-Za-z\-_]{30,45}")),
+    # Google / Gemini API Keys (AIza or newer AQ. prefixes)
+    ("GEMINI_API_KEY", re.compile(r"(?:AIza[0-9A-Za-z\-_]{30,45}|AQ\.[0-9A-Za-z\-_]{30,70})")),
     
-    # OpenAI API Keys
-    ("OPENAI_API_KEY", re.compile(r"sk-[a-zA-Z0-9]{20,48}")),
+    # OpenAI & DeepSeek API Keys
+    ("AI_API_KEY", re.compile(r"\b(?:sk-[a-zA-Z0-9_\-]{20,64}|sk-or-v1-[0-9a-fA-F]{64})\b")),
+    
+    # Resend API Key
+    ("RESEND_API_KEY", re.compile(r"\bre_[0-9A-Za-z_]{20,64}\b")),
+    
+    # Upstash Redis Token
+    ("UPSTASH_REDIS_TOKEN", re.compile(r"\bgQ[0-9A-Za-z]{30,80}\b")),
     
     # Razorpay Test / Live Keys
     ("RAZORPAY_KEY", re.compile(r"rzp_(?:test|live)_[0-9a-zA-Z]{14}")),
@@ -70,7 +76,7 @@ class SecretScanner:
                         redacted_content = redacted_content[:start] + replacement + redacted_content[end:]
                         findings.append({
                             "type": secret_type,
-                            "preview": secret_val[:3] + "..." + secret_val[-2:],
+                            "preview": f"*** (length={len(secret_val)})",
                         })
                 else:
                     if not cls._is_placeholder(full_match):
@@ -80,7 +86,7 @@ class SecretScanner:
                         redacted_content = redacted_content[:start] + replacement + redacted_content[end:]
                         findings.append({
                             "type": secret_type,
-                            "preview": full_match[:6] + "...",
+                            "preview": f"*** (length={len(full_match)})",
                         })
 
         return redacted_content, findings

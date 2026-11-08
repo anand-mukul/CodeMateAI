@@ -199,6 +199,13 @@ export class AuthService {
     return response.json();
   }
 
+  public static async createHandoffCode(): Promise<string> {
+    const res = await this.fetchAuth<{ handoff_code: string; expires_in: number }>('/api/auth/handoff/create', {
+      method: 'POST',
+    });
+    return res.handoff_code;
+  }
+
   /**
    * Refreshes access token using rotating refresh token.
    * Single-flight promise mutex prevents race conditions from concurrent 401s.

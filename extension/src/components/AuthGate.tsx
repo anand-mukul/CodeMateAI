@@ -99,10 +99,19 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
     }
   };
 
-  const handleOpenWebDashboard = () => {
+  const handleOpenWebDashboard = async () => {
     const webUrl = AuthService.getWebPortalUrl();
     const token = AuthService.getCachedAccessToken();
-    const dest = token ? `${webUrl}/dashboard?session_token=${encodeURIComponent(token)}` : `${webUrl}/login`;
+    let dest = `${webUrl}/login`;
+    if (token) {
+      dest = `${webUrl}/dashboard`;
+      try {
+        const code = await AuthService.createHandoffCode();
+        dest = `${webUrl}/dashboard?handoff_code=${encodeURIComponent(code)}`;
+      } catch {
+        // Fall back to clean dashboard URL without exposing raw tokens in query params
+      }
+    }
     if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
       chrome.tabs.create({ url: dest });
     } else {
