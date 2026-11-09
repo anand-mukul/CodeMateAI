@@ -28,7 +28,7 @@ class AdminUserSuspendRequest(BaseModel):
 
 
 class AdminUserRoleUpdateRequest(BaseModel):
-    role: str = Field(..., pattern=r"^(user|analyst|support_agent|admin|super_admin)$")
+    role: str = Field(..., pattern=r"^(user|admin|USER|ADMIN)$")
     reason: str = Field(..., min_length=3, max_length=500)
 
 

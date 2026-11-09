@@ -185,8 +185,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const role = user?.role?.toUpperCase() || "";
-  const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
-  const isSupport = isAdmin || role === "SUPPORT_AGENT";
+  const isAdmin = role === "ADMIN";
+  const isSupport = isAdmin;
 
   return (
     <AuthContext.Provider

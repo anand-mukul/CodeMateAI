@@ -23,10 +23,7 @@ from app.models.enums import AccountStatus, DeviceStatus, SessionStatus, UserRol
 from app.services.subscription_service import SubscriptionService
 
 PRIVILEGED_ROLES = {
-    UserRole.SUPER_ADMIN.value,
     UserRole.ADMIN.value,
-    UserRole.SUPPORT_AGENT.value,
-    UserRole.ANALYST.value,
 }
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -53,7 +50,7 @@ async def get_current_user_and_session(
                     password_hash="dev_placeholder_hash",
                     display_name="Developer Local",
                     email_verified=True,
-                    role=UserRole.SUPER_ADMIN.value,
+                    role=UserRole.ADMIN.value,
                     account_status=AccountStatus.ACTIVE.value,
                 )
                 db.add(dev_user)
@@ -174,7 +171,7 @@ def require_feature_entitlement(feature_name: str):
     """
     Factory dependency verifying that the user's active plan explicitly entitles the requested feature.
     If credentials are provided (or in production), strictly validates active plan entitlements.
-    Platform administrators (SUPER_ADMIN, ADMIN) bypass all feature gates with executive access.
+    Platform administrators (ADMIN) bypass all feature gates with executive access.
     """
     async def _dependency(
         credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
@@ -210,7 +207,7 @@ def require_feature_entitlement(feature_name: str):
 def enforce_daily_quota(feature_name: str):
     """
     Factory dependency verifying daily AI request quotas and recording consumption.
-    Platform administrators (SUPER_ADMIN, ADMIN) are exempt from request limits (infinite quota).
+    Platform administrators (ADMIN) are exempt from request limits (infinite quota).
     """
     async def _dependency(
         credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
@@ -370,7 +367,7 @@ async def get_authorized_provider(
             api_key_override=None,
         )
 
-    # For paid passes (core_daily, autopilot_weekly), allow requested models or fallback to managed fast model
+    # For paid passes (PLAN_CORE_PASS, PLAN_AUTOPILOT_PASS), allow requested models or fallback to managed fast model
     return ProviderManager.get_provider(
         override=provider_override,
         model_override=model_override,

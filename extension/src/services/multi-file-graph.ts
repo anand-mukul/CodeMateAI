@@ -74,33 +74,45 @@ export class MultiFileProjectOrchestrator {
     let currentTaskId = "";
 
     try {
-      // Step 1: Initialize Task Context in Backend Ephemeral Memory (Upstash Redis)
-      onProgress?.(0, Object.keys(files).length, "Workspace", "synthesizing", "Analyzing project architecture & building dependency DAG...");
+      // Step 1: Initialize Task Context
+      onProgress?.(0, Object.keys(files).length, "Workspace", "synthesizing", "Planning file order...");
 
-      const initRes = await CodeMateApiClient.request<{
-        task_id: string;
-        target_framework: string;
-        dependency_order: string[];
-        total_steps: number;
-        summary: string;
-      }>("/api/tasks/init", {
-        method: "POST",
-        body: JSON.stringify({
-          problem_title: problemTitle,
-          problem_statement: problemStatement,
-          files,
-          provider: providerOverride,
-          model: modelOverride,
-        }),
-      }, 2, providerOverride, "GENERATE");
+      let dependencyOrder = Object.keys(files);
+      let totalSteps = dependencyOrder.length;
 
-      if (!initRes || !initRes.task_id) {
-        throw new Error("Failed to initialize task context with backend.");
+      try {
+        const initPromise = CodeMateApiClient.request<{
+          task_id: string;
+          target_framework: string;
+          dependency_order: string[];
+          total_steps: number;
+          summary: string;
+        }>("/api/tasks/init", {
+          method: "POST",
+          body: JSON.stringify({
+            problem_title: problemTitle,
+            problem_statement: problemStatement,
+            files,
+            provider: providerOverride,
+            model: modelOverride,
+          }),
+        }, 1, providerOverride, "GENERATE");
+
+        const timeoutPromise = new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout initializing task")), 30000)
+        );
+
+        const initRes = await Promise.race([initPromise, timeoutPromise]);
+        if (initRes && initRes.task_id) {
+          currentTaskId = initRes.task_id;
+          if (initRes.dependency_order && initRes.dependency_order.length > 0) {
+            dependencyOrder = initRes.dependency_order;
+            totalSteps = dependencyOrder.length;
+          }
+        }
+      } catch (initErr) {
+        console.warn("[MultiFile] Init fallback engaged:", initErr);
       }
-
-      currentTaskId = initRes.task_id;
-      const dependencyOrder = initRes.dependency_order || Object.keys(files);
-      const totalSteps = dependencyOrder.length;
 
       const completedFiles: Record<string, string> = {};
 
@@ -116,29 +128,54 @@ export class MultiFileProjectOrchestrator {
           totalSteps,
           targetFile,
           "synthesizing",
-          `Synthesizing ${targetFile} (${i + 1}/${totalSteps}) using shared project contracts...`
+          `Writing ${targetFile} (${i + 1} of ${totalSteps})...`
         );
 
-        // A. Call backend to synthesize file adhering to cumulative contracts
-        const stepRes = await CodeMateApiClient.request<{
-          task_id: string;
-          step_index: number;
-          target_file: string;
-          code: string;
-          explanation: string;
-          extracted_contracts: Record<string, any>;
-        }>(`/api/tasks/${currentTaskId}/step`, {
-          method: "POST",
-          body: JSON.stringify({
-            task_id: currentTaskId,
-            step_index: i,
-            target_file: targetFile,
-            provider: providerOverride,
-            model: modelOverride,
-          }),
-        }, 2, providerOverride, "GENERATE");
+        // A. Call backend to synthesize file
+        let stepCode = "";
+        let extractedContracts: Record<string, any> = {};
 
-        if (!stepRes || !stepRes.code) {
+        if (currentTaskId) {
+          try {
+            const stepRes = await CodeMateApiClient.request<{
+              task_id: string;
+              step_index: number;
+              target_file: string;
+              code: string;
+              explanation: string;
+              extracted_contracts: Record<string, any>;
+            }>(`/api/tasks/${currentTaskId}/step`, {
+              method: "POST",
+              body: JSON.stringify({
+                task_id: currentTaskId,
+                step_index: i,
+                target_file: targetFile,
+                provider: providerOverride,
+                model: modelOverride,
+              }),
+            }, 2, providerOverride, "GENERATE");
+
+            if (stepRes && stepRes.code) {
+              stepCode = stepRes.code;
+              extractedContracts = stepRes.extracted_contracts || {};
+            }
+          } catch (stepErr) {
+            console.warn(`[MultiFile] Step API error for ${targetFile}, trying direct fallback:`, stepErr);
+          }
+        }
+
+        // Direct fallback if step API failed or no task_id
+        if (!stepCode) {
+          const genRes = await CodeMateApiClient.generateSolution({
+            title: `${problemTitle} - ${targetFile}`,
+            problem_statement: `${problemStatement}\n\nTarget File to implement: ${targetFile}\nExisting Starter Code:\n${files[targetFile] || ""}`,
+            starter_code: files[targetFile] || undefined,
+            selected_language: targetFile.endsWith(".java") ? "java" : targetFile.endsWith(".py") ? "python" : "cpp",
+          }, providerOverride);
+          stepCode = genRes.code;
+        }
+
+        if (!stepCode) {
           throw new Error(`Failed to generate valid code for ${targetFile}.`);
         }
 
@@ -170,31 +207,36 @@ export class MultiFileProjectOrchestrator {
           totalSteps,
           targetFile,
           "injecting",
-          `Injecting code into ${targetFile} Ace editor buffer...`
+          `Inserting code into ${targetFile}...`
         );
 
         const insertRes = await ExtensionMessagingService.insertCode({
-          code: stepRes.code,
+          code: stepCode,
           mode: "replace",
+          targetFile,
         });
 
         if (!insertRes || !insertRes.success) {
           console.warn(`[MultiFile] Direct injection warning for ${targetFile}, continuing...`);
         }
 
-        completedFiles[targetFile] = stepRes.code;
+        completedFiles[targetFile] = stepCode;
 
-        // D. Commit step to backend Ephemeral Memory (updates contracts + resets 15m TTL)
-        await CodeMateApiClient.request(`/api/tasks/${currentTaskId}/commit`, {
-          method: "POST",
-          body: JSON.stringify({
-            task_id: currentTaskId,
-            step_index: i,
-            target_file: targetFile,
-            code: stepRes.code,
-            extracted_contracts: stepRes.extracted_contracts,
-          }),
-        }, 1);
+        // D. Commit step to backend memory if task active
+        if (currentTaskId) {
+          try {
+            await CodeMateApiClient.request(`/api/tasks/${currentTaskId}/commit`, {
+              method: "POST",
+              body: JSON.stringify({
+                task_id: currentTaskId,
+                step_index: i,
+                target_file: targetFile,
+                code: stepCode,
+                extracted_contracts: extractedContracts,
+              }),
+            }, 1);
+          } catch {}
+        }
 
         // E. Cooldown delay for editor stabilization
         onProgress?.(
@@ -202,19 +244,21 @@ export class MultiFileProjectOrchestrator {
           totalSteps,
           targetFile,
           "settling",
-          `Stabilizing editor buffer for ${targetFile}...`
+          `Completed ${targetFile}...`
         );
-        await new Promise((r) => setTimeout(r, 1200));
+        await new Promise((r) => setTimeout(r, 800));
       }
 
-      // Step 3: Complete & Purge Ephemeral Memory
-      onProgress?.(totalSteps, totalSteps, "Workspace", "completed", "Purging working memory and finalizing project...");
-      await this.abortCurrentTask(currentTaskId);
+      // Step 3: Complete & Clean Up
+      onProgress?.(totalSteps, totalSteps, "Workspace", "completed", "All files updated!");
+      if (currentTaskId) {
+        await this.abortCurrentTask(currentTaskId);
+      }
 
       return {
         success: true,
         completedFiles,
-        summary: `Successfully completed all ${totalSteps} project files adhering to shared interface contracts.`,
+        summary: `Successfully completed all ${totalSteps} project files.`,
       };
     } catch (err: any) {
       if (currentTaskId) {

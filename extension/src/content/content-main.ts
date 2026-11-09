@@ -10,7 +10,6 @@
 import { EditorManager } from '../editor/editor-manager';
 import { VsCodeWebAdapter } from '../editor/adapters/vscode-web-adapter';
 import { EditorOperation, InsertionMode } from '../types/editor';
-import { inferTargetFilename } from '../utils/language';
 
 (function () {
   'use strict';
@@ -64,12 +63,15 @@ import { inferTargetFilename } from '../utils/language';
 
         case 'GET_VALUE':
         case 'GET_EDITOR_CODE': {
+          const adapter = editorManager.getActiveAdapter();
+          const activeTab = adapter instanceof VsCodeWebAdapter ? adapter.getActiveTab() : null;
           const code = editorManager.getValue();
           const lines = code ? code.split('\n').length : 0;
           responseData = {
             code,
             lineCount: lines,
             charCount: code.length,
+            activeTab,
           };
           success = true;
           break;
@@ -77,7 +79,7 @@ import { inferTargetFilename } from '../utils/language';
 
         case 'HARVEST_WORKSPACE': {
           const adapter = editorManager.getActiveAdapter();
-          if (adapter instanceof VsCodeWebAdapter) {
+          if (adapter instanceof VsCodeWebAdapter && adapter.isMultiFileWorkspace()) {
             responseData = await adapter.harvestAllOpenFiles();
             success = true;
           } else {
@@ -171,36 +173,47 @@ import { inferTargetFilename } from '../utils/language';
 
           // Target tab safety guard for VS Code Web / Monaco
           const adapter = editorManager.getActiveAdapter();
-          if (adapter instanceof VsCodeWebAdapter && text) {
-            const targetFile = explicitTarget || inferTargetFilename(text);
-            if (targetFile) {
+          if (adapter instanceof VsCodeWebAdapter && text && explicitTarget) {
+            const targetFile = explicitTarget;
+            const openTabs = adapter.getOpenTabs();
+            if (openTabs.length > 1) {
               const activeTab = adapter.getActiveTab();
-              const cleanActive = activeTab ? adapter.normalizeName(activeTab) : '';
-              const cleanTarget = adapter.normalizeName(targetFile);
-              if (cleanActive && cleanTarget && cleanActive !== cleanTarget) {
+              if (activeTab && !adapter.isMatchingFile(activeTab, targetFile)) {
                 console.log(`[CodeMate AI] Auto-switching tab from '${activeTab}' to '${targetFile}' before insertion`);
-                await adapter.switchTab(targetFile);
-                await new Promise((r) => setTimeout(r, 180));
+                const switched = await adapter.switchTab(targetFile);
+                if (!switched) {
+                  await adapter.openWorkspaceFile(targetFile);
+                }
+                await new Promise((r) => setTimeout(r, 300));
               }
 
               // Verify active tab matches target file before modifying!
-              const currentActive = adapter.getActiveTab();
-              const currentClean = currentActive ? adapter.normalizeName(currentActive) : '';
-              if (
-                currentClean &&
-                cleanTarget &&
-                currentClean !== cleanTarget &&
-                currentClean.replace(/\.[a-z0-9]+$/i, '') !== cleanTarget.replace(/\.[a-z0-9]+$/i, '')
-              ) {
-                console.error(
-                  `[CodeMate AI] CRITICAL SAFETY ABORT: Active tab is '${currentActive}', but target is '${targetFile}'. Aborting insertion to prevent file contamination!`
+              let currentActive = adapter.getActiveTab();
+              let retries = 0;
+              while (retries < 5 && currentActive && !adapter.isMatchingFile(currentActive, targetFile)) {
+                await adapter.switchTab(targetFile);
+                await new Promise((r) => setTimeout(r, 200));
+                currentActive = adapter.getActiveTab();
+                retries++;
+              }
+
+              if (currentActive && !adapter.isMatchingFile(currentActive, targetFile)) {
+                console.warn(
+                  `[CodeMate AI] Active editor tab '${currentActive}' did not switch to '${targetFile}', but Tier-1 will locate model by URI path.`
                 );
-                errorCode = 'WRONG_TAB_ACTIVE';
-                errorMessage = `Active editor is '${currentActive}', expected '${targetFile}'. Insertion aborted for safety.`;
-                success = false;
-                break;
               }
             }
+
+            // Pass explicit targetFilename to insertText so it can find the correct Monaco model
+            // by URI path instead of relying on getActiveTab() which may still reflect old breadcrumb
+            const res = await adapter.insertText(text, mode, targetFile);
+            responseData = res;
+            success = res.success;
+            if (!res.success) {
+              errorCode = res.errorCode || 'INSERTION_FAILED';
+              errorMessage = res.error || 'Insertion failed';
+            }
+            break;
           }
 
           const res = await editorManager.insertCode(text, mode);

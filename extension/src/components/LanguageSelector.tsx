@@ -20,7 +20,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   onSelectLanguage,
 }) => {
   return (
-    <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+    <div className="flex items-center justify-between p-2 rounded-lg bg-slate-900 border border-slate-800">
       <div className="flex items-center gap-1.5 text-xs text-slate-300 font-medium">
         <Terminal className="w-3.5 h-3.5 text-indigo-400" />
         <span>Target Language</span>
@@ -30,7 +30,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
         <select
           value={selectedLanguage}
           onChange={(e) => onSelectLanguage(e.target.value)}
-          className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1 outline-none focus:border-indigo-500 font-medium cursor-pointer"
+          className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-md px-2 py-0.5 outline-none focus:border-indigo-500 font-medium cursor-pointer"
         >
           {SUPPORTED_LANGUAGES.map((lang) => (
             <option key={lang.id} value={lang.label}>

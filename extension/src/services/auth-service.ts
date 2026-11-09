@@ -26,12 +26,12 @@ export class AuthService {
   private static refreshPromise: Promise<{ access_token: string; refresh_token: string } | null> | null = null;
   private static baseUrl: string = (
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) ||
-    'https://codemate-backend-wsi1.onrender.com'
+    'http://localhost:8000'
   ).replace(/\/$/, '');
 
   private static webPortalUrl: string = (
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_WEB_PORTAL_URL) ||
-    ''
+    'http://localhost:3000'
   ).replace(/\/$/, '');
 
   public static setBaseUrl(url: string) {
@@ -48,10 +48,7 @@ export class AuthService {
 
   public static getWebPortalUrl(): string {
     if (this.webPortalUrl) return this.webPortalUrl;
-    if (this.baseUrl.includes('127.0.0.1') || this.baseUrl.includes('localhost')) {
-      return 'http://localhost:3000';
-    }
-    return 'https://codemate-frontend.onrender.com';
+    return 'http://localhost:3000';
   }
 
   public static getCachedAccessToken(): string | null {

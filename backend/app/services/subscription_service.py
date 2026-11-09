@@ -47,32 +47,14 @@ class SubscriptionService:
 
     @classmethod
     async def get_plan_by_id(cls, db: AsyncSession, plan_id: str) -> Optional[Plan]:
-        """Retrieves a specific plan by identifier, normalizing PLAN_CORE_PASS and PLAN_AUTOPILOT_PASS."""
+        """Retrieves a canonical plan by identifier (FREE, PLAN_CORE_PASS, PLAN_AUTOPILOT_PASS)."""
         if plan_id == "ENTERPRISE_ADMIN":
             return cls._create_admin_plan()
 
-        query = select(Plan).where((Plan.id == plan_id) | (Plan.id == plan_id.upper()) | (Plan.id == plan_id.lower()))
+        clean_id = (plan_id or "").strip()
+        query = select(Plan).where((Plan.id == clean_id) | (Plan.id == clean_id.upper()))
         result = await db.execute(query)
-        plan = result.scalars().first()
-        if plan:
-            return plan
-
-        aliases = {
-            "FREE": "free",
-            "free": "FREE",
-            "PLAN_CORE_PASS": "core_daily",
-            "core_daily": "PLAN_CORE_PASS",
-            "PLAN_AUTOPILOT_PASS": "autopilot_weekly",
-            "autopilot_weekly": "PLAN_AUTOPILOT_PASS",
-            "plan_daily_21": "PLAN_CORE_PASS",
-            "plan_weekly_61": "PLAN_AUTOPILOT_PASS",
-        }
-        alt_id = aliases.get(plan_id)
-        if alt_id:
-            query = select(Plan).where((Plan.id == alt_id) | (Plan.id == alt_id.upper()) | (Plan.id == alt_id.lower()))
-            result = await db.execute(query)
-            return result.scalars().first()
-        return None
+        return result.scalars().first()
 
     @classmethod
     async def get_active_subscription(cls, db: AsyncSession, user_id: str) -> Optional[Subscription]:
@@ -86,21 +68,16 @@ class SubscriptionService:
     ) -> Tuple[Subscription, Plan]:
         """
         Retrieves the user's active subscription.
-        - Platform administrators (SUPER_ADMIN, ADMIN) automatically receive an Enterprise Admin plan.
+        - Platform administrators (ADMIN) automatically receive an Enterprise Admin plan.
         - If subscription period ended, transitions it to expired and initializes a Free subscription.
         - If no subscription exists, creates a default lifetime/free subscription.
         """
         now = utc_now()
 
-        # Check if user is a platform administrator (super_admin or admin)
+        # Check if user is a platform administrator (ADMIN)
         user_res = await db.execute(select(User).where(User.id == user_id))
         user = user_res.scalars().first()
-        if user and (user.role or "").upper() in (
-            UserRole.SUPER_ADMIN.value,
-            UserRole.ADMIN.value,
-            UserRole.SUPPORT_AGENT.value,
-            UserRole.ANALYST.value,
-        ):
+        if user and (user.role or "").upper() == UserRole.ADMIN.value:
             admin_plan = cls._create_admin_plan()
             admin_sub = Subscription(
                 id="admin_enterprise_sub",
@@ -208,7 +185,7 @@ class SubscriptionService:
         period_end = base_time + timedelta(days=calc_days)
         new_sub = Subscription(
             user_id=user_id,
-            plan_id=plan_id,
+            plan_id=plan.id,
             billing_provider=provider,
             provider_subscription_id=provider_sub_id,
             status=SubscriptionStatus.ACTIVE.value,
@@ -253,12 +230,7 @@ class SubscriptionService:
 
         user_res = await db.execute(select(User).where(User.id == user_id))
         user = user_res.scalars().first()
-        if user and (user.role or "").upper() in (
-            UserRole.SUPER_ADMIN.value,
-            UserRole.ADMIN.value,
-            UserRole.SUPPORT_AGENT.value,
-            UserRole.ANALYST.value,
-        ):
+        if user and (user.role or "").upper() == UserRole.ADMIN.value:
             return SubscriptionResponse(
                 id=sub.id,
                 plan_id=PlanTier.PLAN_AUTOPILOT_PASS.value,

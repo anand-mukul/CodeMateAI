@@ -3,7 +3,7 @@ import { EditorAdapter, EditorStatus, InsertionMode, InsertionResult } from '../
 export abstract class BaseEditorAdapter implements EditorAdapter {
   abstract detect(): boolean;
   abstract getValue(): string;
-  abstract insertText(code: string, mode?: InsertionMode): InsertionResult | Promise<InsertionResult>;
+  abstract insertText(code: string, mode?: InsertionMode, targetFilename?: string): InsertionResult | Promise<InsertionResult>;
   abstract focus(): void;
   abstract getSelection(): { start: unknown; end: unknown; text?: string } | null;
   abstract getStatus(): EditorStatus;

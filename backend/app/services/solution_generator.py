@@ -54,8 +54,8 @@ class SolutionGeneratorService:
         if provider is None:
             provider = ProviderManager.get_provider()
 
-        # Check if multi-file project with 2 or more files
-        if problem.workspace_files and len(problem.workspace_files) > 1:
+        # Check if multi-file project with 2 or more files and NO single-file starter_code specified
+        if problem.workspace_files and len(problem.workspace_files) > 1 and not (problem.starter_code and problem.starter_code.strip()):
             try:
                 return await cls.generate_multifile_solution(problem, provider=provider)
             except Exception as mf_err:
@@ -75,7 +75,29 @@ class SolutionGeneratorService:
             examples_text += f"Example {i}:\nInput: {eg.input}\nOutput: {eg.output}\n"
 
         starter_code_section = ""
-        if problem.workspace_files:
+        if problem.starter_code and problem.starter_code.strip():
+            safe_starter = sanitize_untrusted_text(problem.starter_code, max_chars=15000)
+            context_section = ""
+            if problem.workspace_files:
+                other_files = [
+                    f"FILE: {fname}\n```{problem.selected_language}\n{sanitize_untrusted_text(fcontent, max_chars=3000)}\n```"
+                    for fname, fcontent in problem.workspace_files.items()
+                    if fcontent.strip() != problem.starter_code.strip()
+                ]
+                if other_files:
+                    context_section = "\n\nPROJECT WORKSPACE CONTEXT (OTHER FILES FOR REFERENCE ONLY):\n" + "\n\n".join(other_files[:4])
+
+            starter_code_section = (
+                f"\n\nCURRENT ACTIVE FILE STARTER CODE TO COMPLETE:\n"
+                f"```{problem.selected_language}\n{safe_starter}\n```\n"
+                f"{context_section}\n\n"
+                f"CRITICAL RULES FOR ACTIVE FILE COMPLETION:\n"
+                f"1. Implement ONLY this current active file. Do not replace it with code for other files.\n"
+                f"2. PRESERVE EXISTING CLASS DECLARATION & PACKAGE: Keep the exact class/interface name, package, annotations, and parameters already declared in this starter code. Do NOT rename the class to match the file name if it differs.\n"
+                f"3. Fulfill all `// TODO` items, missing methods, and requirements inside this existing file structure.\n"
+                f"4. Return the full completed ready-to-compile file code in the `code` field."
+            )
+        elif problem.workspace_files:
             files_desc = "\n\n".join([
                 f"FILE: {fname}\n```{problem.selected_language}\n{sanitize_untrusted_text(fcontent, max_chars=10000)}\n```"
                 for fname, fcontent in problem.workspace_files.items()
@@ -86,26 +108,10 @@ class SolutionGeneratorService:
                 f"{files_desc}\n\n"
                 f"INSTRUCTIONS:\n"
                 f"1. Complete all `// TODO` items across the files according to problem instructions.\n"
-                f"2. Return the completed code for each file in the `workspace_files` list, where each item has `filename` (e.g. 'StudentService.java') and `code` (the full completed source code for that specific file).\n"
-                f"3. STRICT FILE INTEGRITY: Each file MUST contain its own class only (e.g. Student.java contains `class Student`, StudentService.java contains `@Service class StudentService`, CollegeApp.java contains runner). NEVER put StudentService inside Student.java or vice-versa.\n"
+                f"2. Return the completed code for each file in the `workspace_files` list, where each item has `filename` and `code`.\n"
+                f"3. PRESERVE EXISTING DECLARATIONS: Retain the exact class names, packages, and annotations present in each file's starter code.\n"
                 f"4. In the primary `code` field, include the primary completed service/runner file.\n"
                 f"5. Do NOT leave any TODO placeholders or incomplete methods.\n"
-            )
-        elif problem.starter_code and problem.starter_code.strip():
-            safe_starter = sanitize_untrusted_text(problem.starter_code, max_chars=15000)
-            starter_code_section = (
-                f"\n\nCRITICAL REQUIREMENT — STARTER CODE COMPLETION:\n"
-                f"The user's code editor already contains this starter code/boilerplate:\n"
-                f"```{problem.selected_language}\n{safe_starter}\n```\n"
-                f"INSTRUCTIONS FOR COMPLETING CODE:\n"
-                f"1. You MUST PRESERVE the exact class name, struct definitions, function names, parameter types, and return types from the starter code.\n"
-                f"2. DO NOT change function signatures (e.g. if the function is named `createBST`, DO NOT rename it).\n"
-                f"3. DO NOT redefine structs if they are already defined or commented as provided (e.g. if `struct Node` is commented or pre-defined, DO NOT redeclare it as it causes redefinition compilation errors).\n"
-                f"4. Fill in the complete algorithmic implementation inside the function body (replacing comments like '// your code goes here').\n"
-                f"5. IMPORTANT JUDGE FORMATTING RULE:\n"
-                f"   - If the starter code is a `class Solution` or function signature without `int main()`, DO NOT add `int main()`. Return ONLY the completed class/function structure expected by the online judge.\n"
-                f"   - If the starter code or problem uses standard competitive programming I/O (no class Solution), write full runnable code with `int main()`.\n"
-                f"6. Return the full code that should replace the editor content, complete and ready to compile.\n"
             )
 
         system_prompt = load_prompt_template(
@@ -213,27 +219,7 @@ class SolutionGeneratorService:
         if problem.selected_language and problem.selected_language.lower() not in ("text", "generic"):
             primary_lang = problem.selected_language.lower()
 
-        # 2. Boilerplate / Entry Point Protection & Healing
-        # Spring Boot: Prevent test annotations from corrupting main @SpringBootApplication
-        for fname, fcontent in list(raw_files.items()):
-            if "demoapplication" in fname.lower():
-                if "test" in fcontent.lower() or "mockmvc" in fcontent.lower() or "junit" in fcontent.lower():
-                    logger.info("Restoring DemoApplication.java to clean @SpringBootApplication main runner.")
-                    clean_runner = (
-                        "package com.example.demo;\n\n"
-                        "import org.springframework.boot.SpringApplication;\n"
-                        "import org.springframework.boot.autoconfigure.SpringBootApplication;\n\n"
-                        "@SpringBootApplication\n"
-                        "public class DemoApplication {\n"
-                        "    public static void main(String[] args) {\n"
-                        "        SpringApplication.run(DemoApplication.class, args);\n"
-                        "    }\n"
-                        "}\n"
-                    )
-                    raw_files[fname] = clean_runner
-                    completed_files[fname] = clean_runner
-
-        # 3. Universal Topological Sequence Order with Dependency Analysis
+        # 2. Universal Topological Sequence Order with Dependency Analysis
         # Models/Types -> Repositories/Utils -> Services -> Controllers/Components -> Entrypoints/Apps
         from app.services.multifile_resolver import sort_workspace_files_topologically, extract_typed_contracts
 
@@ -257,6 +243,7 @@ class SolutionGeneratorService:
                 contract = extract_typed_contracts(done_code, done_name, file_lang)
                 memory_context += f"FILE: {done_name} (TYPED API CONTRACT):\n```{file_lang}\n{contract}\n```\n\n"
 
+            target_class = fname.split(".")[0]
             framework_desc = f"{framework} ({primary_lang})" if framework != "generic" else primary_lang
 
             file_prompt = (
@@ -268,11 +255,10 @@ class SolutionGeneratorService:
                 f"```{file_lang}\n{orig_code}\n```\n\n"
                 f"STRICT ENGINEERING INSTRUCTIONS:\n"
                 f"1. Fulfill all `// TODO` items and missing methods/components in '{fname}'.\n"
-                f"2. Follow standard {framework_desc} conventions, correct imports, and preserve exports/signatures.\n"
-                f"3. CRITICAL COMPILE SAFETY: This file compiles in the production source tree (src/main/). NEVER include test framework imports or annotations (@SpringBootTest, MockMvc, @Test, org.junit.*, jest, vitest) inside this file.\n"
-                f"4. REST CONTROLLER & CRUD ACCURACY: If '{fname}' is a Controller, annotate with @RestController and @RequestMapping('/api/...'). Implement all endpoints with correct HTTP status codes (POST -> 201 Created with auto-generated ID, GET/PUT -> 200 OK or 404, DELETE -> 200 OK or 204).\n"
-                f"5. DEPENDENCY INJECTION: If '{fname}' is a Service or Component, annotate with @Service or @Component and use constructor injection.\n"
-                f"6. Return ONLY the complete, ready-to-run source code for '{fname}'. Do NOT output conversational filler, just the code inside ```{file_lang} ```."
+                f"2. CLASS NAME INTEGRITY: The class inside '{fname}' MUST be named exactly '{target_class}'. NEVER declare another class (e.g. if file is {fname}, declare public class {target_class}, NEVER a Controller or Test class).\n"
+                f"3. STRICT ROLE ISOLATION: If '{fname}' is a Service or Component, declare @Service or @Component with constructor injection. NEVER put @RestController or HTTP endpoints in a Service. If '{fname}' is a Model, implement only fields, getters, setters, and constructors.\n"
+                f"4. CRITICAL COMPILE SAFETY: This file compiles in the production source tree (src/main/). NEVER include test framework imports or annotations (@SpringBootTest, MockMvc, @Test, org.junit.*, jest, vitest) inside this file.\n"
+                f"5. Return ONLY the complete, ready-to-run source code for '{fname}'. Do NOT output conversational filler, just the code inside ```{file_lang} ```."
             )
 
             try:
@@ -280,7 +266,6 @@ class SolutionGeneratorService:
                 extracted_code = cls._extract_code(res)
                 if extracted_code and len(extracted_code.strip()) > 20:
                     code = extracted_code.strip()
-                    target_class = fname.split(".")[0]
                     if file_lang == "java":
                         wrong_class_match = re.search(r"\bpublic\s+(class|interface|record|enum)\s+([A-Za-z0-9_]+)\b", code)
                         if wrong_class_match:

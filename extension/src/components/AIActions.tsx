@@ -1,11 +1,14 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
-  Wand2,
-  Zap,
+  Play,
   RefreshCw,
   FileText,
   Terminal,
   Square,
+  FolderGit2,
+  CheckCircle2,
+  FileCode,
+  Trash2,
 } from 'lucide-react';
 import { ProblemContext } from '../types/problem';
 import {
@@ -20,8 +23,6 @@ import { ExtensionMessagingService } from '../services/extension-messaging';
 import { normalizeLanguage } from '../utils/language';
 import { SUPPORTED_LANGUAGES } from './LanguageSelector';
 import { usePersistentDraft } from '../hooks/usePersistentDraft';
-import { MultiFileProjectOrchestrator } from '../services/multi-file-graph';
-import { MultiFileProgressModal, MultiFileStepState } from './MultiFileProgressModal';
 
 interface AIActionsProps {
   problemContext: ProblemContext | null;
@@ -49,18 +50,6 @@ export const AIActions: React.FC<AIActionsProps> = ({
   // Errors
   const [errorGenerate, setErrorGenerate] = useState<string | null>(null);
   const [errorOptimize, setErrorOptimize] = useState<string | null>(null);
-
-  // Multi-File LangGraph.js Orchestrator Modal State
-  const [isMultiFileModalOpen, setIsMultiFileModalOpen] = useState(false);
-  const [multiFileProgress, setMultiFileProgress] = useState<MultiFileStepState>({
-    step: 0,
-    total: 0,
-    currentFile: '',
-    phase: 'synthesizing',
-    message: '',
-    files: [],
-    completedFiles: [],
-  });
 
   // Cancellation controllers
   const generateAbortRef = useRef<AbortController | null>(null);
@@ -93,6 +82,146 @@ export const AIActions: React.FC<AIActionsProps> = ({
   const [manualStatement, setManualStatement, clearManualStatement] = usePersistentDraft('manual_problem_stmt', '');
   const [showManualInput, setShowManualInput] = useState<boolean>(false);
 
+  // Multi-File Project Architecture Session State (Practice Section History)
+  const [multiFileSession, setMultiFileSession] = useState<any>(null);
+  const [regeneratingFile, setRegeneratingFile] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadSession = () => {
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(['codemate_multifile_session_v1'], (st) => {
+          setMultiFileSession(st?.codemate_multifile_session_v1 || null);
+        });
+      }
+    };
+    loadSession();
+
+    const storageListener = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+      if (areaName === 'local' && changes['codemate_multifile_session_v1']) {
+        setMultiFileSession(changes['codemate_multifile_session_v1'].newValue || null);
+      }
+    };
+    chrome.storage?.onChanged?.addListener(storageListener);
+    return () => {
+      chrome.storage?.onChanged?.removeListener(storageListener);
+    };
+  }, []);
+
+  const handleClearSession = () => {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.remove(['codemate_multifile_session_v1'], () => {
+        setMultiFileSession(null);
+        onNotify('Multi-file project session cleared.', false);
+      });
+    }
+  };
+
+  const handleSyncFileToEditor = async (filename: string, code: string) => {
+    try {
+      const res = await ExtensionMessagingService.insertCode({
+        code,
+        mode: 'replace',
+        targetFile: filename,
+      });
+      const baseName = filename.split('/').pop() || filename;
+      if (res?.success) {
+        onNotify(`✓ Synced ${baseName} to active editor`, false);
+      } else {
+        onNotify(`Could not sync ${baseName} to editor`, true);
+      }
+    } catch (e: any) {
+      onNotify(`Sync error: ${e.message}`, true);
+    }
+  };
+
+  const handleRegenerateFile = async (filename: string) => {
+    if (!multiFileSession) return;
+    setRegeneratingFile(filename);
+    const baseName = filename.split('/').pop() || filename;
+    onNotify(`Regenerating ${baseName}...`, false);
+
+    try {
+      const completedFilesContext: Record<string, string> = {};
+      if (Array.isArray(multiFileSession.files)) {
+        for (const f of multiFileSession.files) {
+          if (f.code && f.filename !== filename) {
+            completedFilesContext[f.filename] = f.code;
+          }
+        }
+      }
+
+      const settings: any = await new Promise((res) => {
+        chrome.storage.local.get(['codemate_ai_settings_v1', 'codemate_provider_selection_v1', 'codemate_api_keys_v1'], res);
+      });
+      const baseUrl = settings?.codemate_ai_settings_v1?.backendUrl || 'http://localhost:8000';
+      const activeProvider = providerOverride || settings?.codemate_provider_selection_v1?.provider || 'gemini';
+      const activeModel = settings?.codemate_provider_selection_v1?.model || 'gemini-3.8-flash';
+      const apiKey = settings?.codemate_api_keys_v1?.[activeProvider] || undefined;
+
+      const targetFileObj = multiFileSession.files?.find((f: any) => f.filename === filename);
+      const initialCode = targetFileObj?.initial_code || multiFileSession.initial_files?.[filename] || '';
+
+      const reqPayload = {
+        project_id: multiFileSession.project_id || 'manual_session',
+        filename,
+        file_content: initialCode,
+        problem_title: multiFileSession.problem_title || problemContext?.problemTitle || 'Task',
+        problem_statement: multiFileSession.problem_statement || problemContext?.problemStatement || '',
+        selected_language: multiFileSession.selected_language || selectedLanguage || 'java',
+        completed_files_context: completedFilesContext,
+      };
+
+      const res: any = await new Promise((resolve) => {
+        chrome.runtime.sendMessage(
+          {
+            type: 'SECURE_FORWARD_API',
+            endpoint: '/api/projects/ephemeral/complete-file',
+            payload: reqPayload,
+            baseUrl,
+            provider: activeProvider,
+            model: activeModel,
+            apiKey,
+          },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              resolve({ success: false, error: chrome.runtime.lastError.message });
+            } else {
+              resolve(response);
+            }
+          }
+        );
+      });
+
+      if (res?.success && res.data?.code) {
+        const newCode = res.data.code;
+        const updated = { ...multiFileSession };
+        if (Array.isArray(updated.files)) {
+          const target = updated.files.find((f: any) => f.filename === filename);
+          if (target) {
+            target.code = newCode;
+            target.status = 'completed';
+          }
+        }
+        chrome.storage.local.set({ codemate_multifile_session_v1: updated });
+        setMultiFileSession(updated);
+
+        await ExtensionMessagingService.insertCode({
+          code: newCode,
+          mode: 'replace',
+          targetFile: filename,
+        });
+
+        onNotify(`✓ ${baseName} regenerated and synced to editor!`, false);
+      } else {
+        throw new Error(res?.error || 'Failed to regenerate code');
+      }
+    } catch (err: any) {
+      onNotify(`Regeneration failed: ${err.message}`, true);
+    } finally {
+      setRegeneratingFile(null);
+    }
+  };
+
   /**
    * Helper to normalize problem into ProblemRequestDTO
    */
@@ -119,7 +248,9 @@ export const AIActions: React.FC<AIActionsProps> = ({
   };
 
   /**
-   * 1. Generate Solution Action (Universal Multi-File & Single-File Context)
+   * 1. Generate Solution Action (Single Active File Focus with Project Memory Context)
+   * Solves ONLY the currently active open file while retaining full workspace memory of other files.
+   * Full multi-file autonomous runs are reserved for 1-Click Auto Solve / Assistant.
    */
   const handleGenerate = async () => {
     if (loadingGenerate) return;
@@ -130,8 +261,19 @@ export const AIActions: React.FC<AIActionsProps> = ({
     setActiveTab('generate');
 
     try {
-      // 1. Check if multi-file workspace
-      let workspaceFiles: Record<string, string> | null = null;
+      // 1. Fetch current open editor code and active tab name
+      let starterCode: string | undefined = undefined;
+      let activeFileName: string | null = null;
+      try {
+        const editorRes = await ExtensionMessagingService.getEditorCode();
+        if (editorRes && editorRes.success && editorRes.data) {
+          starterCode = editorRes.data.code;
+          activeFileName = editorRes.data.activeTab || null;
+        }
+      } catch {}
+
+      // 2. Harvest project workspace files into memory context (prevents contract drift)
+      let workspaceFiles: Record<string, string> | undefined = undefined;
       try {
         const harvestRes = await ExtensionMessagingService.harvestWorkspace();
         if (harvestRes.success && harvestRes.data && Object.keys(harvestRes.data).length >= 2) {
@@ -139,98 +281,56 @@ export const AIActions: React.FC<AIActionsProps> = ({
         }
       } catch {}
 
-      // If multi-file workspace is detected:
-      if (workspaceFiles && Object.keys(workspaceFiles).length >= 2) {
-        const fileNames = Object.keys(workspaceFiles);
-        setIsMultiFileModalOpen(true);
-        setMultiFileProgress({
-          step: 0,
-          total: fileNames.length,
-          currentFile: fileNames[0],
-          phase: 'synthesizing',
-          message: 'Initializing LangGraph multi-file orchestrator...',
-          files: fileNames,
-          completedFiles: [],
-        });
+      // 3. Build focused problem request for the active file
+      const rawStatement =
+        manualStatement.trim() ||
+        problemContext?.problemStatement ||
+        (problemContext?.problemTitle
+          ? `Solve coding practice problem: ${problemContext.problemTitle}`
+          : 'Solve the current coding practice problem optimally.');
 
-        const completedFilesTracker: string[] = [];
+      const statementWithContext = activeFileName
+        ? `CURRENT OPEN FILE TO IMPLEMENT: ${activeFileName}\n\nInstructions: Implement ONLY ${activeFileName}. Do not replace with another class. Follow all shared project types and conventions.\n\n${rawStatement}`
+        : rawStatement;
 
-        const orchestratorResult = await MultiFileProjectOrchestrator.executeProjectWorkflow(
-          problemContext?.problemTitle || 'Multi-File Project Task',
-          problemContext?.problemStatement || '',
-          workspaceFiles,
-          providerOverride,
-          undefined,
-          (step, total, currentFile, phase, message) => {
-            if (phase === 'injecting' && !completedFilesTracker.includes(currentFile)) {
-              completedFilesTracker.push(currentFile);
-            }
-            setMultiFileProgress({
-              step,
-              total,
-              currentFile,
-              phase,
-              message,
-              files: fileNames,
-              completedFiles: [...completedFilesTracker],
-            });
-          }
-        );
+      const titleWithFile = activeFileName
+        ? `${problemContext?.problemTitle || 'Task'} — ${activeFileName}`
+        : (problemContext?.problemTitle || problemContext?.problemCode || 'CodeChef Problem');
 
-        if (orchestratorResult.success) {
-          setIsMultiFileModalOpen(false);
-          const firstFile = fileNames[0];
-          const firstCode = orchestratorResult.completedFiles[firstFile] || Object.values(orchestratorResult.completedFiles)[0] || '';
-          setSolutionResult({
-            success: true,
-            problem_summary: orchestratorResult.summary,
-            approach: {
-              name: 'LangGraph Ephemeral Multi-File Orchestration',
-              explanation: `Successfully sequenced and synthesized all ${fileNames.length} project files adhering to shared interface contracts.`,
-              steps: fileNames.map((f, i) => `Step ${i + 1}: Synthesize & inject ${f}`),
-            },
-            algorithm: 'Directed Acyclic Graph Component Synthesis',
-            data_structures: ['LangGraph State Machine', 'Upstash Redis Ephemeral Store'],
-            code: firstCode,
-            workspace_files: Object.entries(orchestratorResult.completedFiles).map(([filename, code]) => ({ filename, code })),
-            language: selectedLanguage,
-            complexity: {
-              time: {
-                notation: 'O(N)',
-                explanation: 'Standard runtime efficiency for model/service operations.',
-              },
-              space: {
-                notation: 'O(N)',
-                explanation: 'Memory allocated for instantiated entities and services.',
-              },
-            },
-            edge_cases: ['Null lookup checks', 'Strict interface contracts preserved'],
-            sample_case_analysis: [],
-            warnings: [],
-            provider: providerOverride || 'openrouter',
-            model: 'langgraph-ephemeral-orchestrator',
-          });
-          onNotify(`✓ All ${fileNames.length} project files synthesized and injected!`);
-          return;
-        } else {
-          setIsMultiFileModalOpen(false);
-          throw new Error(orchestratorResult.error || 'Multi-file orchestration failed.');
-        }
+      // Auto-detect active file language if it differs from current selector
+      let targetLang = selectedLanguage;
+      if (activeFileName?.endsWith('.java') || /package\s+[a-zA-Z0-9_\.]+;|import\s+java\./.test(starterCode || '')) {
+        targetLang = 'Java';
+      } else if (activeFileName?.endsWith('.py')) {
+        targetLang = 'Python3';
+      } else if (activeFileName?.endsWith('.cpp') || activeFileName?.endsWith('.cc')) {
+        targetLang = 'C++';
+      }
+      if (onSelectLanguage && targetLang !== selectedLanguage) {
+        onSelectLanguage(targetLang);
       }
 
-      // 2. Single-file competitive programming
-      let starterCode: string | undefined = undefined;
-      try {
-        const editorRes = await ExtensionMessagingService.getEditorCode();
-        if (editorRes && editorRes.success && editorRes.data?.code && editorRes.data.code.trim().length > 10) {
-          starterCode = editorRes.data.code;
-        }
-      } catch {}
+      const req: ProblemRequestDTO = {
+        title: titleWithFile,
+        problem_statement: statementWithContext,
+        input_format: problemContext?.inputFormat,
+        output_format: problemContext?.outputFormat,
+        constraints: problemContext?.constraints,
+        examples: problemContext?.sampleCases || [],
+        selected_language: normalizeLanguage(targetLang),
+        starter_code: starterCode,
+        workspace_files: workspaceFiles,
+        platform: problemContext?.platform?.toLowerCase() || 'codechef',
+        problem_url: problemContext?.url,
+      };
 
-      const req = buildProblemRequest(starterCode);
       const res = await SolutionService.generate(req, providerOverride, abortCtrl.signal);
       setSolutionResult(res);
-      onNotify(`✓ Optimal ${selectedLanguage} solution generated!`);
+      onNotify(
+        activeFileName
+          ? `✓ Optimal solution generated for ${activeFileName}!`
+          : `✓ Optimal ${selectedLanguage} solution generated!`
+      );
     } catch (err: any) {
       if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
         return;
@@ -302,32 +402,30 @@ export const AIActions: React.FC<AIActionsProps> = ({
 
   return (
     <div className="flex flex-col gap-2.5">
-      {/* Sleek Segmented Mode Selector (Linear / Raycast pattern) */}
-      <div className="flex items-center p-1 bg-slate-900 border border-slate-800 rounded-xl text-xs shadow-inner">
+      {/* Segmented Mode Selector */}
+      <div className="flex items-center p-0.5 bg-slate-900 border border-slate-800 rounded-lg text-xs">
         <button
           onClick={() => setActiveTab('generate')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg font-semibold text-[11px] transition-all cursor-pointer ${
+          className={`flex-1 py-1.5 px-3 rounded-md font-medium text-xs transition-colors cursor-pointer text-center ${
             activeTab === 'generate'
-              ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/25'
+              ? 'bg-slate-800 text-white'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Wand2 className="w-3.5 h-3.5" />
-          <span>Synthesize Solution</span>
+          Generate solution
         </button>
         <button
           onClick={() => {
             setActiveTab('optimize');
             if (!studentCode) handleFetchFromEditor();
           }}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg font-semibold text-[11px] transition-all cursor-pointer ${
+          className={`flex-1 py-1.5 px-3 rounded-md font-medium text-xs transition-colors cursor-pointer text-center ${
             activeTab === 'optimize'
-              ? 'bg-purple-600 text-white shadow-sm shadow-purple-500/25'
+              ? 'bg-slate-800 text-white'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Zap className="w-3.5 h-3.5" />
-          <span>Refactor & Optimize</span>
+          Optimize code
         </button>
       </div>
 
@@ -397,20 +495,103 @@ export const AIActions: React.FC<AIActionsProps> = ({
             </div>
           )}
 
-          {/* Primary High-Visibility Generate Action & Stop Control */}
+          {/* Multi-File Architecture Session History Card */}
+          {multiFileSession && Array.isArray(multiFileSession.files) && multiFileSession.files.length > 0 && (
+            <div className="p-3 rounded-xl bg-slate-900/95 border border-indigo-500/30 flex flex-col gap-2.5 text-xs shadow-lg shadow-indigo-950/25 animate-fade-in">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 font-semibold text-indigo-300">
+                  <FolderGit2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span className="truncate max-w-[170px]" title={multiFileSession.problem_title}>
+                    {multiFileSession.problem_title || 'Multi-File Architecture'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono">
+                    {multiFileSession.files.filter((f: any) => f.status === 'completed').length}/{multiFileSession.files.length} Done
+                  </span>
+                  <button
+                    onClick={handleClearSession}
+                    className="text-slate-400 hover:text-rose-400 p-1 transition-colors cursor-pointer"
+                    title="Clear session history"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+
+              {/* File Rows with Per-File Sync & Regenerate */}
+              <div className="flex flex-col gap-1.5 max-h-44 overflow-y-auto pr-0.5">
+                {multiFileSession.files.map((file: any, idx: number) => {
+                  const baseName = (file.filename || '').split('/').pop() || file.filename;
+                  const isDone = file.status === 'completed';
+                  const isBusy = regeneratingFile === file.filename;
+
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-1.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-[11px]"
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0 pr-1">
+                        {isDone ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        ) : isBusy ? (
+                          <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin shrink-0" />
+                        ) : (
+                          <FileCode className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        )}
+                        <span className="font-mono text-slate-200 truncate" title={file.filename}>
+                          {baseName}
+                        </span>
+                        {file.role && (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-slate-800 text-slate-400 shrink-0">
+                            {file.role}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {file.code && (
+                          <button
+                            onClick={() => handleSyncFileToEditor(file.filename, file.code)}
+                            className="px-2 py-0.5 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 text-[10px] font-medium transition-colors cursor-pointer"
+                            title="Insert this code into editor"
+                          >
+                            Sync
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleRegenerateFile(file.filename)}
+                          disabled={isBusy}
+                          className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          title="Regenerate this specific file using session memory"
+                        >
+                          {isBusy ? (
+                            <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                          ) : (
+                            'Regen'
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Primary Action Button */}
           {loadingGenerate ? (
             <div className="flex items-center gap-2 w-full">
               <button
                 disabled
-                className="flex-1 py-2.5 px-3 rounded-xl font-semibold text-xs text-white bg-slate-800/90 border border-slate-700/60 flex items-center justify-center gap-2 cursor-wait"
+                className="flex-1 py-2 px-3 rounded-lg font-medium text-xs text-white bg-slate-800 border border-slate-700 flex items-center justify-center gap-2 cursor-wait"
               >
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
-                <span>Synthesizing Optimal Solution...</span>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                <span>Generating solution...</span>
               </button>
               <button
                 onClick={handleStopGenerate}
-                className="py-2.5 px-3.5 rounded-xl font-semibold text-xs text-rose-300 bg-rose-950/70 hover:bg-rose-900/90 border border-rose-500/40 flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
-                title="Stop AI Generation"
+                className="py-2 px-3 rounded-lg font-medium text-xs text-rose-300 bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                title="Stop"
               >
                 <Square className="w-3 h-3 fill-current text-rose-400" />
                 <span>Stop</span>
@@ -419,13 +600,10 @@ export const AIActions: React.FC<AIActionsProps> = ({
           ) : (
             <button
               onClick={handleGenerate}
-              className="w-full py-2.5 px-3.5 rounded-xl font-semibold text-xs text-white bg-gradient-to-r from-indigo-600 via-indigo-500 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
+              className="w-full py-2 px-3 rounded-lg font-medium text-xs text-white bg-indigo-600 hover:bg-indigo-500 transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Wand2 className="w-3.5 h-3.5" />
-              <span>{solutionResult ? 'Regenerate Solution' : 'Generate Optimal Solution'}</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20 font-mono">
-                {selectedLanguage}
-              </span>
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>{solutionResult ? 'Regenerate solution' : 'Generate solution'}</span>
             </button>
           )}
 
@@ -439,7 +617,7 @@ export const AIActions: React.FC<AIActionsProps> = ({
             warnings={solutionResult?.warnings}
             isLoading={loadingGenerate}
             error={errorGenerate}
-            emptyMessage={`Click "Generate Optimal Solution" above to synthesize an optimal ${selectedLanguage} solution.`}
+            emptyMessage={`Click "Generate Solution" above to write an optimal ${selectedLanguage} solution.`}
             onRetry={handleGenerate}
             onStop={handleStopGenerate}
           />
@@ -462,18 +640,6 @@ export const AIActions: React.FC<AIActionsProps> = ({
           />
         </div>
       )}
-
-      {/* LangGraph.js Ephemeral Multi-File Progress Modal */}
-      <MultiFileProgressModal
-        isOpen={isMultiFileModalOpen}
-        state={multiFileProgress}
-        onCancel={async () => {
-          await MultiFileProjectOrchestrator.abortCurrentTask();
-          setIsMultiFileModalOpen(false);
-          setLoadingGenerate(false);
-          onNotify('Multi-file orchestration cancelled. Working memory purged.', true);
-        }}
-      />
     </div>
   );
 };

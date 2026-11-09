@@ -24,7 +24,7 @@ class DeviceService:
         # Platform administrators get unlimited device registrations
         user_res = await db.execute(select(User).where(User.id == user_id))
         user = user_res.scalars().first()
-        if user and (user.role or "").upper() in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value):
+        if user and (user.role or "").upper() == UserRole.ADMIN.value:
             return 999
 
         # Find active subscription

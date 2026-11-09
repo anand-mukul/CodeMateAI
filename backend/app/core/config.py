@@ -24,14 +24,18 @@ class Settings(BaseSettings):
     # Server Bindings
     BACKEND_HOST: str = Field(default="127.0.0.1", description="Server bind host")
     BACKEND_PORT: int = Field(default=8000, description="Server bind port")
+    BACKEND_URL: str = Field(
+        default="http://localhost:8000",
+        description="Backend API base URL",
+    )
 
     # Security & CORS
     ALLOWED_ORIGINS: str = Field(
-        default="http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,https://codemate-web.vercel.app,https://codemate-frontend.onrender.com",
+        default="http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,chrome-extension://*",
         description="Comma-separated allowed CORS origins",
     )
     FRONTEND_URL: str = Field(
-        default="https://codemate-web.vercel.app",
+        default="http://localhost:3000",
         description="Frontend Next.js application URL",
     )
     MAX_REQUEST_SIZE_BYTES: int = Field(
@@ -39,16 +43,12 @@ class Settings(BaseSettings):
     )
     RATE_LIMIT_PER_MINUTE: int = Field(default=60, description="Maximum requests per client per minute")
 
-    # AI Provider Configuration
+    # AI Provider Configuration (Admin configured: deepseek, openai, gemini, openrouter)
     AI_PROVIDER: str = Field(
-        default="gemini",
-        description="Active AI Provider: 'gemini', 'openai', 'openrouter'",
+        default="deepseek",
+        description="Active AI Provider configured by admin: 'deepseek', 'gemini', 'openai', 'openrouter'",
     )
-    DEFAULT_AI_PROVIDER: str = Field(
-        default="gemini",
-        description="Default AI Provider fallback",
-    )
-    AI_MODEL: str = Field(default="gemini-3.8-flash", description="Target model name")
+    AI_MODEL: str = Field(default="deepseek-flash", description="Target model name")
     AI_API_KEY: Optional[str] = Field(default=None, description="API Key for the chosen provider")
     AI_BASE_URL: Optional[str] = Field(default=None, description="Custom API Base URL if applicable")
     GEMINI_API_KEY: Optional[str] = Field(default=None, description="Google Gemini API Key")
@@ -171,9 +171,7 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         if not self.ALLOWED_ORIGINS:
-            if self.ENVIRONMENT.lower() == "production":
-                return ["https://codemateai.com", "https://app.codemateai.com"]
-            return ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"]
+            return ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000", "chrome-extension://*"]
         origins = [orig.strip() for orig in self.ALLOWED_ORIGINS.split(",") if orig.strip()]
         return origins
 

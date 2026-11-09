@@ -31,7 +31,6 @@ class ProviderManager:
         """Returns the active default provider name."""
         return (
             _configured_default_provider
-            or settings.DEFAULT_AI_PROVIDER
             or settings.AI_PROVIDER
             or "deepseek"
         ).lower().strip()

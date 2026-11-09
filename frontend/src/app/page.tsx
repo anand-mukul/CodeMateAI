@@ -20,6 +20,7 @@ import { useAuth } from "@/lib/auth-context";
 
 export default function LandingPage() {
   const { user } = useAuth();
+  const apiDocsUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/docs`;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col selection:bg-indigo-500/30 selection:text-indigo-200">
@@ -40,7 +41,7 @@ export default function LandingPage() {
           <a href="#architecture" className="hover:text-white transition">Architecture</a>
           <a href="#pricing" className="hover:text-white transition">Pricing</a>
           <a
-            href="https://codemate-backend-wsi1.onrender.com/docs"
+            href={apiDocsUrl}
             target="_blank"
             rel="noreferrer"
             className="hover:text-white transition"
@@ -260,7 +261,7 @@ export default function LandingPage() {
 
         <div className="flex items-center gap-6">
           <a
-            href="https://codemate-backend-wsi1.onrender.com/docs"
+            href={apiDocsUrl}
             target="_blank"
             rel="noreferrer"
             className="hover:text-zinc-300 transition"

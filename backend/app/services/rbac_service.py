@@ -18,10 +18,7 @@ from app.services.entitlement_service import get_current_user
 
 
 class AdminRole(str, Enum):
-    SUPER_ADMIN = "SUPER_ADMIN"
     ADMIN = "ADMIN"
-    SUPPORT_AGENT = "SUPPORT_AGENT"
-    ANALYST = "ANALYST"
     USER = "USER"
 
 
@@ -37,19 +34,8 @@ class AdminPermission(str, Enum):
     VIEW_AUDIT_LOGS = "view_audit_logs"
 
 
-# Strict Role-to-Permissions Matrix
+# Strict Role-to-Permissions Matrix (Exactly two roles: ADMIN and USER)
 ROLE_PERMISSIONS: Dict[AdminRole, List[AdminPermission]] = {
-    AdminRole.SUPER_ADMIN: [
-        AdminPermission.VIEW_ANALYTICS,
-        AdminPermission.VIEW_USERS,
-        AdminPermission.MANAGE_USERS,
-        AdminPermission.MANAGE_SUBSCRIPTIONS,
-        AdminPermission.MANAGE_SUPPORT_TICKETS,
-        AdminPermission.MANAGE_FEATURE_REQUESTS,
-        AdminPermission.MANAGE_FEATURE_FLAGS,
-        AdminPermission.MANAGE_ADMIN_ROLES,
-        AdminPermission.VIEW_AUDIT_LOGS,
-    ],
     AdminRole.ADMIN: [
         AdminPermission.VIEW_ANALYTICS,
         AdminPermission.VIEW_USERS,
@@ -58,15 +44,7 @@ ROLE_PERMISSIONS: Dict[AdminRole, List[AdminPermission]] = {
         AdminPermission.MANAGE_SUPPORT_TICKETS,
         AdminPermission.MANAGE_FEATURE_REQUESTS,
         AdminPermission.MANAGE_FEATURE_FLAGS,
-        AdminPermission.VIEW_AUDIT_LOGS,
-    ],
-    AdminRole.SUPPORT_AGENT: [
-        AdminPermission.VIEW_USERS,
-        AdminPermission.MANAGE_SUPPORT_TICKETS,
-        AdminPermission.MANAGE_FEATURE_REQUESTS,
-    ],
-    AdminRole.ANALYST: [
-        AdminPermission.VIEW_ANALYTICS,
+        AdminPermission.MANAGE_ADMIN_ROLES,
         AdminPermission.VIEW_AUDIT_LOGS,
     ],
     AdminRole.USER: [],
@@ -82,10 +60,7 @@ def require_admin_permission(permission: AdminPermission):
         user: User = Depends(get_current_user),
     ) -> User:
         user_role_str = (user.role or "USER").upper()
-        try:
-            role = AdminRole(user_role_str)
-        except ValueError:
-            role = AdminRole.USER
+        role = AdminRole.ADMIN if user_role_str == "ADMIN" else AdminRole.USER
 
         allowed_perms = ROLE_PERMISSIONS.get(role, [])
         if permission not in allowed_perms:
@@ -114,10 +89,7 @@ def require_admin_role(*allowed_roles: AdminRole):
         user: User = Depends(get_current_user),
     ) -> User:
         user_role_str = (user.role or "USER").upper()
-        try:
-            role = AdminRole(user_role_str)
-        except ValueError:
-            role = AdminRole.USER
+        role = AdminRole.ADMIN if user_role_str == "ADMIN" else AdminRole.USER
 
         if role not in allowed_roles:
             raise HTTPException(

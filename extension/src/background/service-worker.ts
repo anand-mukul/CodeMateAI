@@ -66,7 +66,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Handle: Secure API Forwarding (Avoids mixed-content restrictions on HTTPS problem pages)
   if (message.type === 'SOLVE_PROBLEM_AUTO' || message.type === 'SECURE_FORWARD_API') {
-    const rawBaseUrl = message.baseUrl || 'https://codemate-backend-wsi1.onrender.com';
+    const defaultApiUrl = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+    const rawBaseUrl = message.baseUrl || defaultApiUrl;
     if (!isOriginAllowed(rawBaseUrl)) {
       console.error('[CodeMate AI Security] Blocked API forwarding to unapproved origin:', rawBaseUrl);
       sendResponse({
@@ -91,32 +92,75 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.model) headers['X-CodeMate-Model'] = message.model;
     if (message.apiKey) headers['X-CodeMate-API-Key'] = message.apiKey;
 
-    chrome.storage.local.get(['codemate_auth_tokens_v1', 'codemate_auth_tokens'], (store) => {
-      const tokens = store.codemate_auth_tokens_v1 || store.codemate_auth_tokens;
+    const method = (message.method || 'POST').toUpperCase();
+
+    chrome.storage.local.get(['codemate_auth_tokens_v1', 'codemate_auth_tokens'], async (store) => {
+      let tokens = store.codemate_auth_tokens_v1 || store.codemate_auth_tokens;
       if (tokens && tokens.access_token) {
         headers['Authorization'] = `Bearer ${tokens.access_token}`;
       }
 
-      fetch(targetUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(message.payload || {}),
-        signal: controller.signal,
-      })
-        .then(async (res) => {
-          clearTimeout(timeoutTimer);
-          if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.detail || `HTTP ${res.status}: ${res.statusText}`);
-          }
-          return res.json();
-        })
-        .then((data) => sendResponse({ success: true, data }))
-        .catch((err) => {
-          clearTimeout(timeoutTimer);
-          const errMsg = err.name === 'AbortError' ? 'Backend request timed out (75s)' : err.message || 'Network error';
-          sendResponse({ success: false, error: errMsg });
+      try {
+        let res = await fetch(targetUrl, {
+          method,
+          headers,
+          body: method === 'GET' || method === 'HEAD' ? undefined : JSON.stringify(message.payload || {}),
+          signal: controller.signal,
         });
+
+        // 401 Catch & Token Refresh Interceptor
+        if (res.status === 401 && tokens && tokens.refresh_token) {
+          console.info('[CodeMate AI ServiceWorker] Access token expired (401). Refreshing token...');
+          try {
+            const refreshUrl = `${rawBaseUrl.replace(/\/$/, '')}/api/auth/refresh`;
+            const refreshRes = await fetch(refreshUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+              body: JSON.stringify({ refresh_token: tokens.refresh_token }),
+            });
+
+            if (refreshRes.ok) {
+              const newTokens = await refreshRes.json();
+              if (newTokens && newTokens.access_token) {
+                tokens = {
+                  ...tokens,
+                  access_token: newTokens.access_token,
+                  refresh_token: newTokens.refresh_token || tokens.refresh_token,
+                };
+                chrome.storage.local.set({
+                  codemate_auth_tokens_v1: tokens,
+                  codemate_auth_tokens: tokens,
+                });
+                headers['Authorization'] = `Bearer ${tokens.access_token}`;
+
+                // Transparently re-issue the original request with fresh token
+                res = await fetch(targetUrl, {
+                  method,
+                  headers,
+                  body: method === 'GET' || method === 'HEAD' ? undefined : JSON.stringify(message.payload || {}),
+                  signal: controller.signal,
+                });
+              }
+            } else {
+              console.warn('[CodeMate AI ServiceWorker] Token refresh failed with status:', refreshRes.status);
+            }
+          } catch (refreshErr) {
+            console.warn('[CodeMate AI ServiceWorker] Error during token refresh:', refreshErr);
+          }
+        }
+
+        clearTimeout(timeoutTimer);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `HTTP ${res.status}: ${res.statusText}`);
+        }
+        const data = await res.json();
+        sendResponse({ success: true, data });
+      } catch (err: any) {
+        clearTimeout(timeoutTimer);
+        const errMsg = err.name === 'AbortError' ? 'Backend request timed out (75s)' : err.message || 'Network error';
+        sendResponse({ success: false, error: errMsg });
+      }
     });
 
     return true; // Keep message channel open for async response

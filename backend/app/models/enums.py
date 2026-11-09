@@ -9,10 +9,7 @@ from enum import Enum
 
 class UserRole(str, Enum):
     USER = "USER"
-    ANALYST = "ANALYST"
-    SUPPORT_AGENT = "SUPPORT_AGENT"
     ADMIN = "ADMIN"
-    SUPER_ADMIN = "SUPER_ADMIN"
 
 
 class AccountStatus(str, Enum):

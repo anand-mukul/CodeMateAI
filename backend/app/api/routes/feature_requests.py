@@ -245,7 +245,7 @@ async def add_feature_request_comment(
     if not req:
         raise HTTPException(status_code=404, detail="Feature request not found.")
 
-    is_official = user.role in ("super_admin", "admin", "support_agent")
+    is_official = (user.role or "").upper() == "ADMIN"
     comment = FeatureRequestComment(
         feature_request_id=request_id,
         user_id=user.id,

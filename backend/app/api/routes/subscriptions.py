@@ -106,7 +106,7 @@ async def redeem_promo_code(
     Redeems 100% free promotional passes (e.g. CAMPUS100, FREEPASS, AMBASSADOR).
     Bypasses Razorpay checkout completely and directly activates the subscription.
     """
-    plan_id = payload.plan_id or "autopilot_weekly"
+    plan_id = payload.plan_id or "PLAN_AUTOPILOT_PASS"
     res = await PromoService.redeem_promo(db, user, payload.code, plan_id)
     return RedeemPromoResponse(
         success=res["success"],

@@ -49,13 +49,13 @@ class AnalyticsQueries:
         mau = (await db.execute(mau_q)).scalar_one() or 0
 
         # 3. Plan Distribution
-        free_q = select(func.count(Subscription.id)).where(Subscription.plan_id.in_(["FREE", "free"]), Subscription.status == SubscriptionStatus.ACTIVE.value)
+        free_q = select(func.count(Subscription.id)).where(Subscription.plan_id == "FREE", Subscription.status == SubscriptionStatus.ACTIVE.value)
         free_count = (await db.execute(free_q)).scalar_one() or 0
 
-        pro_q = select(func.count(Subscription.id)).where(Subscription.plan_id.in_(["PLAN_CORE_PASS", "core_daily"]), Subscription.status == SubscriptionStatus.ACTIVE.value)
+        pro_q = select(func.count(Subscription.id)).where(Subscription.plan_id == "PLAN_CORE_PASS", Subscription.status == SubscriptionStatus.ACTIVE.value)
         pro_count = (await db.execute(pro_q)).scalar_one() or 0
 
-        prem_q = select(func.count(Subscription.id)).where(Subscription.plan_id.in_(["PLAN_AUTOPILOT_PASS", "autopilot_weekly"]), Subscription.status == SubscriptionStatus.ACTIVE.value)
+        prem_q = select(func.count(Subscription.id)).where(Subscription.plan_id == "PLAN_AUTOPILOT_PASS", Subscription.status == SubscriptionStatus.ACTIVE.value)
         prem_count = (await db.execute(prem_q)).scalar_one() or 0
 
         # 4. Total AI Requests & Tokens

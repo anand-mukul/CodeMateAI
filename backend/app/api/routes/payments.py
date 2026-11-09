@@ -123,7 +123,7 @@ async def serve_razorpay_checkout(
     key_id = settings.RAZORPAY_KEY_ID or "rzp_test_codemate_sandbox"
     is_sandbox = settings.ENVIRONMENT != "production" and (not settings.RAZORPAY_KEY_ID or settings.RAZORPAY_KEY_ID.startswith("rzp_test_codemate_sandbox"))
 
-    anchor_price = 99 if plan.id == "core_daily" else 199 if plan.id == "autopilot_daily" else plan.price // 100
+    anchor_price = 99 if plan.id == "PLAN_CORE_PASS" else 199 if plan.id == "PLAN_AUTOPILOT_PASS" else plan.price // 100
     final_price_paise = plan.price
     coupon_msg = ""
     if coupon_code:

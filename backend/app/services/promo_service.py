@@ -124,7 +124,7 @@ class PromoService:
         plan_res = await db.execute(plan_query)
         plan = plan_res.scalars().first()
         if not plan:
-            plan_query = select(Plan).where(Plan.id.in_([PlanTier.PLAN_AUTOPILOT_PASS.value, "autopilot_weekly"]))
+            plan_query = select(Plan).where(Plan.id == PlanTier.PLAN_AUTOPILOT_PASS.value)
             plan_res = await db.execute(plan_query)
             plan = plan_res.scalars().first()
 

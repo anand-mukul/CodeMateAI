@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-export type ThemeId = 'dark' | 'gemini' | 'midnight' | 'cyberpunk' | 'light';
+export type ThemeId = 'dark' | 'midnight' | 'slate' | 'emerald' | 'violet' | 'light';
 
 export interface ThemeOption {
   id: ThemeId;
@@ -14,40 +14,48 @@ export interface ThemeOption {
 export const THEME_OPTIONS: ThemeOption[] = [
   {
     id: 'dark',
-    name: 'Dark Obsidian',
-    description: 'Deep high-contrast obsidian dark palette (Default)',
+    name: 'Obsidian',
+    description: 'Deep high-contrast charcoal canvas (Default)',
     previewBg: '#090d16',
     previewAccent: '#6366f1',
     isDark: true,
   },
   {
-    id: 'gemini',
-    name: 'Gemini Aurora',
-    description: 'Google Gemini chromatic flow with luminous violet & blue',
-    previewBg: '#070a14',
-    previewAccent: '#4285F4',
-    isDark: true,
-  },
-  {
     id: 'midnight',
-    name: 'Midnight Navy',
-    description: 'Deep ocean cobalt with crisp electric blue accents',
+    name: 'Midnight',
+    description: 'Deep ocean cobalt with vivid electric blue',
     previewBg: '#040816',
-    previewAccent: '#2563eb',
+    previewAccent: '#3b82f6',
     isDark: true,
   },
   {
-    id: 'cyberpunk',
-    name: 'Cyber Matrix',
-    description: 'Obsidian carbon with precision emerald accent lines',
-    previewBg: '#060b09',
+    id: 'slate',
+    name: 'Slate',
+    description: 'Monochrome zinc carbon with cyan steel accents',
+    previewBg: '#0d1117',
+    previewAccent: '#38bdf8',
+    isDark: true,
+  },
+  {
+    id: 'emerald',
+    name: 'Emerald',
+    description: 'Forest obsidian with crisp mint accents',
+    previewBg: '#060d0a',
     previewAccent: '#10b981',
     isDark: true,
   },
   {
+    id: 'violet',
+    name: 'Violet',
+    description: 'Deep plum palette with lilac purple accents',
+    previewBg: '#0f0a1a',
+    previewAccent: '#a855f7',
+    isDark: true,
+  },
+  {
     id: 'light',
-    name: 'Clean Light',
-    description: 'Crisp daylight mode with pure white cards & high contrast',
+    name: 'Light',
+    description: 'Crisp daylight paper mode with pure white cards',
     previewBg: '#f8fafc',
     previewAccent: '#4f46e5',
     isDark: false,
@@ -73,9 +81,16 @@ const THEME_STORAGE_KEY = 'codemate_theme_v1';
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<ThemeId>(() => {
     try {
-      const saved = localStorage.getItem(THEME_STORAGE_KEY) as ThemeId | null;
-      if (saved && THEME_OPTIONS.some((t) => t.id === saved)) {
-        return saved;
+      const saved = localStorage.getItem(THEME_STORAGE_KEY);
+      if (saved) {
+        if (THEME_OPTIONS.some((t) => t.id === saved)) {
+          return saved as ThemeId;
+        }
+        // Legacy migration mappings
+        if (saved === 'gemini') return 'midnight';
+        if (saved === 'cyberpunk' || saved === 'openai') return 'emerald';
+        if (saved === 'dracula' || saved === 'claude') return 'violet';
+        if (saved === 'nord') return 'slate';
       }
     } catch {}
     return 'dark';
@@ -108,15 +123,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleTheme = () => {
-    // Quick toggle between primary dark and light, or cycle
-    const next: Record<ThemeId, ThemeId> = {
-      dark: 'gemini',
-      gemini: 'midnight',
-      midnight: 'cyberpunk',
-      cyberpunk: 'light',
-      light: 'dark',
-    };
-    setTheme(next[theme] || 'dark');
+    const order: ThemeId[] = ['dark', 'midnight', 'slate', 'emerald', 'violet', 'light'];
+    const currentIndex = order.indexOf(theme);
+    const nextTheme = order[(currentIndex + 1) % order.length];
+    setTheme(nextTheme);
   };
 
   return (

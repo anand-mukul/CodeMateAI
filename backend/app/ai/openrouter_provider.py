@@ -60,7 +60,7 @@ class OpenRouterProvider(AIProvider):
             )
         return {
             "Authorization": f"Bearer {self._api_key}",
-            "HTTP-Referer": "https://codemateai.com",
+            "HTTP-Referer": settings.FRONTEND_URL,
             "X-Title": "CodeMate AI",
             "Content-Type": "application/json",
         }

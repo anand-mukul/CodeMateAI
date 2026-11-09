@@ -12,7 +12,7 @@ export interface UserProfile {
   id: string;
   email: string;
   display_name: string;
-  role: "USER" | "ADMIN" | "SUPER_ADMIN" | "SUPPORT_AGENT" | "ANALYST" | string;
+  role: "USER" | "ADMIN";
   auth_provider: string;
   email_verified: boolean;
   account_status: string;

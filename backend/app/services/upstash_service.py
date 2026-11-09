@@ -74,40 +74,49 @@ class UpstashRedisService:
             "step_summaries": [],
         }
 
+        # Always store in high-performance local memory store first
+        async with _store_lock:
+            cls._clean_expired_memory_tasks()
+            _in_memory_task_store[task_id] = initial_state
+            logger.info(f"[Task Memory] Initialized ephemeral task in memory: {task_id} (TTL={ttl_seconds}s)")
+
         if cls._has_upstash_credentials():
             try:
                 base_url = settings.UPSTASH_REDIS_REST_URL.rstrip("/")
                 key = f"cm:task:{task_id}:state"
                 payload = json.dumps(initial_state)
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    resp = await client.post(
+                async with httpx.AsyncClient(timeout=1.5) as client:
+                    await client.post(
                         f"{base_url}/set/{key}",
                         content=payload,
                         params={"ex": ttl_seconds},
                         headers=cls._get_rest_headers(),
                     )
-                    if resp.status_code == 200:
-                        logger.info(f"[Upstash Redis] Initialized ephemeral task context: {task_id} (TTL={ttl_seconds}s)")
-                        return initial_state
             except Exception as e:
-                logger.warning(f"[Upstash Redis] REST call failed, falling back to memory store: {e}")
+                logger.debug(f"[Upstash Redis] Background sync skipped: {e}")
 
-        # In-memory store fallback
-        async with _store_lock:
-            cls._clean_expired_memory_tasks()
-            _in_memory_task_store[task_id] = initial_state
-            logger.info(f"[Task Memory] Initialized ephemeral task in memory: {task_id} (TTL={ttl_seconds}s)")
+        return initial_state
 
         return initial_state
 
     @classmethod
     async def get_task_state(cls, task_id: str) -> Optional[Dict[str, Any]]:
         """Retrieves active task state, returning None if expired or evicted."""
+        # 1. Fast path: check local memory store first (0ms latency)
+        async with _store_lock:
+            state = _in_memory_task_store.get(task_id)
+            if state:
+                if time.time() > state.get("expires_at", 0):
+                    _in_memory_task_store.pop(task_id, None)
+                    return None
+                return state
+
+        # 2. Remote Upstash fallback
         if cls._has_upstash_credentials():
             try:
                 base_url = settings.UPSTASH_REDIS_REST_URL.rstrip("/")
                 key = f"cm:task:{task_id}:state"
-                async with httpx.AsyncClient(timeout=10.0) as client:
+                async with httpx.AsyncClient(timeout=2.0) as client:
                     resp = await client.get(
                         f"{base_url}/get/{key}",
                         headers=cls._get_rest_headers(),
@@ -116,18 +125,14 @@ class UpstashRedisService:
                         data = resp.json()
                         result = data.get("result")
                         if result:
-                            return json.loads(result) if isinstance(result, str) else result
+                            parsed = json.loads(result) if isinstance(result, str) else result
+                            async with _store_lock:
+                                _in_memory_task_store[task_id] = parsed
+                            return parsed
             except Exception as e:
-                logger.warning(f"[Upstash Redis] Failed to fetch task {task_id}: {e}")
+                logger.debug(f"[Upstash Redis] Fetch fallback skipped: {e}")
 
-        async with _store_lock:
-            state = _in_memory_task_store.get(task_id)
-            if not state:
-                return None
-            if time.time() > state.get("expires_at", 0):
-                _in_memory_task_store.pop(task_id, None)
-                return None
-            return state
+        return None
 
     @classmethod
     async def commit_step(

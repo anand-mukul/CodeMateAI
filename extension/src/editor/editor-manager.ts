@@ -10,8 +10,8 @@ export class EditorManager {
 
   private constructor() {
     this.candidateAdapters = [
-      new VsCodeWebAdapter('.monaco-workbench'),
       new AceEditorAdapter('#submit-ide-v2'),
+      new VsCodeWebAdapter('.monaco-workbench'),
       new TextareaEditorAdapter(),
     ];
   }
@@ -32,7 +32,13 @@ export class EditorManager {
       return this.activeAdapter;
     }
 
-    for (const adapter of this.candidateAdapters) {
+    // Monaco / VS Code workbench takes explicit precedence if mounted
+    const hasMonaco = !!(document.querySelector('.monaco-workbench') || document.querySelector('.monaco-editor'));
+    const sortedCandidates = hasMonaco
+      ? [...this.candidateAdapters].sort((a) => (a instanceof VsCodeWebAdapter ? -1 : 1))
+      : this.candidateAdapters;
+
+    for (const adapter of sortedCandidates) {
       if (adapter.detect()) {
         this.activeAdapter = adapter;
         return this.activeAdapter;
@@ -77,7 +83,7 @@ export class EditorManager {
     };
   }
 
-  public async insertCode(code: string, mode: InsertionMode = 'cursor'): Promise<InsertionResult> {
+  public async insertCode(code: string, mode: InsertionMode = 'cursor', targetFilename?: string): Promise<InsertionResult> {
     const adapter = this.resolveAdapter();
     if (!adapter) {
       return {
@@ -86,7 +92,7 @@ export class EditorManager {
         errorCode: 'EDITOR_NOT_FOUND',
       };
     }
-    return await adapter.insertText(code, mode);
+    return await adapter.insertText(code, mode, targetFilename);
   }
 
   public getValue(): string {

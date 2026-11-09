@@ -106,19 +106,21 @@ export const SafeAutoPilot: React.FC<SafeAutoPilotProps> = ({
 
       const lang = normalizeLanguage(selectedLanguage);
 
-      // Check if multi-file workspace
+      // Check if multi-file workspace (only for genuine multi-file project pages, never single-file practice)
       let workspaceFiles: Record<string, string> | null = null;
-      try {
-        const harvestRes = await ExtensionMessagingService.harvestWorkspace();
-        if (harvestRes.success && harvestRes.data && Object.keys(harvestRes.data).length >= 2) {
-          workspaceFiles = harvestRes.data;
-        }
-      } catch {}
+      if (!problemContext?.problemCode) {
+        try {
+          const harvestRes = await ExtensionMessagingService.harvestWorkspace();
+          if (harvestRes.success && harvestRes.data && Object.keys(harvestRes.data).length >= 2) {
+            workspaceFiles = harvestRes.data;
+          }
+        } catch {}
+      }
 
       let generatedCode = '';
 
       if (workspaceFiles && Object.keys(workspaceFiles).length >= 2) {
-        addLog(`LangGraph multi-file orchestrator engaged (${Object.keys(workspaceFiles).length} files)...`);
+        addLog(`Multi-file project orchestrator engaged (${Object.keys(workspaceFiles).length} files)...`);
         const result = await MultiFileProjectOrchestrator.executeProjectWorkflow(
           problemContext.problemTitle || 'Multi-File Task',
           problemContext.problemStatement || '',
@@ -307,40 +309,34 @@ export const SafeAutoPilot: React.FC<SafeAutoPilotProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-slate-900 border border-slate-800 shadow-md text-xs font-sans">
+    <div className="flex flex-col gap-3 p-3 rounded-lg bg-slate-900 border border-slate-800 shadow-xs text-xs font-sans">
       {/* Header */}
       <div className="flex items-center justify-between pb-2 border-b border-slate-800">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
-            <Zap className="w-4 h-4 fill-emerald-400" />
+          <div className="p-1 rounded-md bg-emerald-500/10 text-emerald-400">
+            <Zap className="w-3.5 h-3.5 fill-emerald-400" />
           </div>
           <div>
-            <h3 className="font-bold text-slate-100 text-xs">Smart Practice Assistant</h3>
-            <p className="text-[10px] text-slate-400">Synthesize ➔ Editor Insertion ➔ Test & Debug</p>
+            <h3 className="font-semibold text-white text-xs">Practice Assistant</h3>
+            <p className="text-[11px] text-slate-400">Solve ➔ Insert ➔ Test ➔ Review</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {fixAttempts > 0 && (
-            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/60">
-              Fixes: {fixAttempts}
-            </span>
-          )}
-          {activeCode && (
-            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-              {activeCode.split('\n').length} lines
-            </span>
-          )}
-          <span
-            className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-              isAutonomousRunning
-                ? 'bg-emerald-950 text-emerald-400 border border-emerald-700/60 animate-pulse'
-                : currentStep === 'VERIFIED'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                : 'bg-slate-800 text-slate-400'
-            }`}
-          >
-            {currentStep}
+        <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+          {fixAttempts > 0 && <span>Fixes: {fixAttempts} •</span>}
+          {activeCode && <span>{activeCode.split('\n').length} lines •</span>}
+          <span className={currentStep === 'VERIFIED' ? 'text-emerald-400 font-medium' : 'text-slate-400'}>
+            {currentStep === 'IDLE'
+              ? 'Idle'
+              : currentStep === 'SOLVING'
+              ? 'Solving'
+              : currentStep === 'INSERTING'
+              ? 'Inserting'
+              : currentStep === 'RUNNING'
+              ? 'Testing'
+              : currentStep === 'FIXING'
+              ? 'Fixing'
+              : 'Verified'}
           </span>
         </div>
       </div>
@@ -352,28 +348,28 @@ export const SafeAutoPilot: React.FC<SafeAutoPilotProps> = ({
             <button
               onClick={handleUserAuthorizedSubmit}
               disabled={isSubmitting}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 shadow-lg shadow-emerald-500/20 transition-all active:scale-98 cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-medium text-xs text-white bg-emerald-600 hover:bg-emerald-500 transition-colors cursor-pointer"
             >
-              <ExternalLink className="w-4 h-4" />
-              <span>{isSubmitting ? 'Submitting...' : 'Review & Submit on CodeChef ↗'}</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>{isSubmitting ? 'Submitting...' : 'Review & submit on CodeChef'}</span>
             </button>
           ) : (
             <button
               onClick={handleStartAutonomousLoop}
               disabled={!problemContext}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 shadow-lg shadow-emerald-500/20 transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-medium text-xs text-white bg-indigo-600 hover:bg-indigo-500 transition-colors disabled:opacity-50 cursor-pointer"
             >
-              <Play className="w-4 h-4 fill-white" />
-              <span>Run Practice Assistant ({selectedLanguage})</span>
+              <Play className="w-3.5 h-3.5 fill-white" />
+              <span>Start assistant ({selectedLanguage})</span>
             </button>
           )
         ) : (
           <button
             onClick={handleStop}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-red-600 hover:bg-red-500 shadow-lg shadow-red-500/20 transition-all cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-medium text-xs text-white bg-red-600 hover:bg-red-500 transition-colors cursor-pointer"
           >
-            <Square className="w-4 h-4 fill-white" />
-            <span>Pause Assistant</span>
+            <Square className="w-3.5 h-3.5 fill-white" />
+            <span>Pause assistant</span>
           </button>
         )}
 
@@ -381,17 +377,17 @@ export const SafeAutoPilot: React.FC<SafeAutoPilotProps> = ({
         <div className="flex items-center justify-between px-1 text-[11px] text-slate-400 pt-0.5">
           <div className="flex items-center gap-1.5 text-slate-400">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-[10px]">Academic integrity safe • Undo (Ctrl+Z) preserved</span>
+            <span className="text-[11px]">Undo (Ctrl+Z) preserved</span>
           </div>
 
           {originalCode && (
             <button
               onClick={handleRestoreOriginal}
-              className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
+              className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
               title="Restore code before assistant started"
             >
               <RotateCcw className="w-3 h-3" />
-              <span>Restore Original</span>
+              <span>Restore original</span>
             </button>
           )}
         </div>
@@ -419,8 +415,8 @@ export const SafeAutoPilot: React.FC<SafeAutoPilotProps> = ({
 
       {/* Telemetry Log */}
       <div className="flex flex-col gap-1.5 p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-          Assistant Progress Log
+        <span className="text-[11px] font-medium text-slate-400">
+          Activity log
         </span>
         <div className="flex flex-col gap-1 font-mono text-[10px] text-slate-300 max-h-36 overflow-y-auto">
           {stepLog.length === 0 ? (

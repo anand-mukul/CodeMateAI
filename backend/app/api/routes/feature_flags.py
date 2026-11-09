@@ -50,7 +50,7 @@ async def evaluate_feature_flags(
             continue
 
         if f.target_audience == "internal_staff":
-            evaluated[f.key] = user.role in ("super_admin", "admin", "support_agent", "analyst")
+            evaluated[f.key] = (user.role or "").upper() == "ADMIN"
         elif f.target_audience == "beta_users":
             evaluated[f.key] = bool(user_hash < f.rollout_percentage)
         else:

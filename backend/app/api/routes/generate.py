@@ -21,6 +21,7 @@ from app.services.entitlement_service import (
 )
 from app.ai.provider import AIProvider
 from app.ai.provider_manager import ProviderManager
+from app.services.response_validator import SolutionValidationError
 from app.core.security import check_rate_limit, verify_request_size
 from app.core.logging import logger
 
@@ -98,6 +99,23 @@ async def generate_solution(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="AI service is currently unreachable. Check your network or provider status.",
+        )
+    except SolutionValidationError as err:
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        await EventCollector.record_server_event(
+            db=db,
+            event_name="code_generated",
+            user_id=user.id,
+            feature_name="generate",
+            duration_ms=duration_ms,
+            success=False,
+            failure_category="VALIDATION_ERROR",
+            model_identifier=getattr(provider, "model_name", None),
+        )
+        logger.warning(f"Validation rejection generating solution for '{problem.title}': {err}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Solution validation failed: {str(err)}",
         )
     except Exception as err:
         duration_ms = int((time.perf_counter() - t0) * 1000)

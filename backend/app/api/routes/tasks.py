@@ -112,7 +112,7 @@ async def execute_task_step(
         )
 
     # Strict multi-tenant isolation
-    if task_state.get("user_id") != user.id and (user.role or "").upper() not in ("SUPER_ADMIN", "ADMIN"):
+    if task_state.get("user_id") != user.id and (user.role or "").upper() != "ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Unauthorized access to isolated task execution context.",

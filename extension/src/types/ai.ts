@@ -17,6 +17,7 @@ export interface ProblemRequestDTO {
   examples?: ExampleCaseDTO[];
   selected_language?: string;
   starter_code?: string;
+  workspace_files?: Record<string, string>;
   platform?: string;
   problem_url?: string;
 }

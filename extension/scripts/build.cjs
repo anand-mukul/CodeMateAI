@@ -24,8 +24,8 @@ async function buildExtension() {
     });
   }
 
-  const envApiUrl = process.env.VITE_API_BASE_URL || 'https://codemate-backend-wsi1.onrender.com';
-  const envWebUrl = process.env.VITE_WEB_PORTAL_URL || 'https://codemate-frontend.onrender.com';
+  const envApiUrl = process.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  const envWebUrl = process.env.VITE_WEB_PORTAL_URL || 'http://localhost:3000';
   const defineEnv = {
     'import.meta.env.VITE_API_BASE_URL': JSON.stringify(envApiUrl),
     'import.meta.env.VITE_WEB_PORTAL_URL': JSON.stringify(envWebUrl),

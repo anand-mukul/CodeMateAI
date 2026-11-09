@@ -260,38 +260,34 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
   };
 
   const userRole = (user.role || '').toUpperCase();
-  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+  const isAdmin = userRole === 'ADMIN';
   const quotaUsed = subscription?.usage_today ?? 0;
   const quotaLimit = isAdmin ? 999999 : (subscription?.ai_usage_limit ?? 10);
   const quotaPercent = isAdmin ? 0 : Math.min(100, Math.round((quotaUsed / quotaLimit) * 100));
   const quotaRemaining = isAdmin ? 999999 : (subscription?.remaining_quota_today ?? Math.max(0, quotaLimit - quotaUsed));
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl flex flex-col font-sans animate-fade-in text-xs">
+    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col font-sans animate-fade-in text-xs">
       {/* Top Profile Card */}
-      <div className="p-3.5 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {/* Avatar with gradient border */}
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 text-white font-bold flex items-center justify-center text-sm shadow-md shadow-indigo-500/20 shrink-0">
+      <div className="p-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          {/* Avatar with clean surface */}
+          <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 font-semibold flex items-center justify-center text-xs shrink-0 shadow-xs">
             {user.display_name ? user.display_name.charAt(0).toUpperCase() : 'U'}
           </div>
 
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="font-semibold text-slate-100 text-xs tracking-tight">{user.display_name}</span>
-              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
-                isAdmin
-                  ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                  : 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
-              }`}>
-                {isAdmin ? 'Enterprise Super Admin' : (subscription?.plan_name || 'Free Tier')}
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                {isAdmin ? 'Admin' : (subscription?.plan_name || 'Free tier')}
               </span>
               {user.email_verified ? (
                 <span className="text-emerald-400 text-[10px] flex items-center" title="Email Verified">
                   <CheckCircle2 className="w-3 h-3" />
                 </span>
               ) : (
-                <span className="px-1 py-0.2 rounded text-[8px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">
                   Unverified
                 </span>
               )}
@@ -301,7 +297,7 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
               <span className="truncate max-w-[180px]">{user.email}</span>
               <button
                 onClick={handleCopyEmail}
-                className="text-slate-500 hover:text-slate-300 transition-colors p-0.5"
+                className="text-slate-500 hover:text-slate-300 transition-colors p-0.5 cursor-pointer"
                 title="Copy Email"
               >
                 {copiedEmail ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
@@ -311,18 +307,18 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
         </div>
 
         {/* Quick Actions: Refresh & Sign Out */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           <button
             onClick={() => refreshAuth()}
             disabled={isLoading}
-            className="p-1.5 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-slate-200 rounded-md hover:bg-slate-800 transition-colors cursor-pointer"
             title="Refresh Account Data"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
           <button
             onClick={logout}
-            className="p-1.5 text-red-400 hover:text-red-300 rounded-lg hover:bg-red-950/40 transition-colors cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-rose-400 rounded-md hover:bg-rose-500/10 transition-colors cursor-pointer"
             title="Sign Out"
           >
             <LogOut className="w-3.5 h-3.5" />
@@ -330,44 +326,44 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
         </div>
       </div>
 
-      {/* Streamlined Primary Sub-Tabs (4 Clean Tabs) */}
-      <div className="grid grid-cols-4 border-b border-slate-800 bg-slate-950/40 p-1 gap-1 text-[11px]">
+      {/* Streamlined Primary Sub-Tabs */}
+      <div className="grid grid-cols-4 border-b border-slate-800 bg-slate-950 p-1 gap-1 text-[11px]">
         <button
           onClick={() => setActiveTab('overview')}
-          className={`py-1.5 px-2 rounded-lg font-medium text-center transition-all cursor-pointer truncate ${
+          className={`py-1.5 px-2 rounded-md font-medium text-center transition-colors cursor-pointer truncate ${
             activeTab === 'overview'
-              ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/20'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850/50'
+              ? 'bg-slate-800 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
           }`}
         >
           Overview
         </button>
         <button
           onClick={() => setActiveTab('plans')}
-          className={`py-1.5 px-2 rounded-lg font-medium text-center transition-all cursor-pointer truncate ${
+          className={`py-1.5 px-2 rounded-md font-medium text-center transition-colors cursor-pointer truncate ${
             activeTab === 'plans'
-              ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/20'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850/50'
+              ? 'bg-slate-800 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
           }`}
         >
           Plans
         </button>
         <button
           onClick={() => setActiveTab('security')}
-          className={`py-1.5 px-2 rounded-lg font-medium text-center transition-all cursor-pointer truncate ${
+          className={`py-1.5 px-2 rounded-md font-medium text-center transition-colors cursor-pointer truncate ${
             activeTab === 'security'
-              ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/20'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850/50'
+              ? 'bg-slate-800 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
           }`}
         >
           Devices ({devices.length})
         </button>
         <button
           onClick={() => setActiveTab('support')}
-          className={`py-1.5 px-2 rounded-lg font-medium text-center transition-all cursor-pointer truncate ${
+          className={`py-1.5 px-2 rounded-md font-medium text-center transition-colors cursor-pointer truncate ${
             activeTab === 'support'
-              ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/20'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850/50'
+              ? 'bg-slate-800 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
           }`}
         >
           Support
@@ -376,10 +372,10 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
 
       {/* TAB 1: OVERVIEW */}
       {activeTab === 'overview' && (
-        <div className="p-3.5 flex flex-col gap-3">
-          {/* Email Verification Alert Banner (Compact) */}
+        <div className="p-3 flex flex-col gap-2.5">
+          {/* Email Verification Alert Banner */}
           {!user.email_verified && (
-            <div className="p-2.5 bg-amber-950/30 border border-amber-800/50 rounded-xl flex items-center justify-between text-amber-200 text-xs">
+            <div className="p-2.5 bg-amber-950/20 border border-amber-500/30 rounded-lg flex items-center justify-between text-amber-200 text-xs">
               <div className="flex items-center gap-1.5">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span className="text-[11px]">Email unverified. Check your inbox.</span>
@@ -389,7 +385,7 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
                   await AuthService.resendVerification(user.email);
                   onNotify?.('Verification email sent to ' + user.email, false);
                 }}
-                className="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors cursor-pointer"
+                className="text-[10px] font-medium px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors cursor-pointer"
               >
                 Resend Link
               </button>
@@ -397,72 +393,63 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
           )}
 
           {/* Daily AI Quota Meter Card */}
-          <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl flex flex-col gap-2.5 shadow-sm">
+          <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-slate-200 font-semibold text-xs">
-                <Zap className={`w-3.5 h-3.5 ${isAdmin ? 'text-amber-400 fill-amber-400/20' : 'text-indigo-400 fill-indigo-400/20'}`} />
-                <span>{isAdmin ? 'Platform Quota' : 'Daily AI Quota'}</span>
+              <div className="flex items-center gap-1.5 text-slate-200 font-medium text-xs">
+                <Zap className="w-3.5 h-3.5 text-indigo-400" />
+                <span>{isAdmin ? 'Platform Access' : 'Daily AI Quota'}</span>
               </div>
               <span className="text-[11px] font-medium text-slate-400">
                 {isAdmin ? (
-                  <strong className="text-amber-300 font-semibold">Unlimited (Executive Access)</strong>
+                  <span className="text-emerald-400 font-medium">Unlimited</span>
                 ) : (
                   <>
-                    <strong className="text-slate-100">{quotaUsed}</strong> / {quotaLimit} used
+                    <strong className="text-slate-200">{quotaUsed}</strong> / {quotaLimit} used
                   </>
                 )}
               </span>
             </div>
 
-            {/* Glowing progress bar for regular users */}
             {!isAdmin ? (
               <>
-                <div className="w-full bg-slate-850 h-2 rounded-full overflow-hidden">
+                <div className="w-full bg-slate-850 h-1.5 rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      quotaPercent > 80
-                        ? 'bg-amber-500 shadow-sm shadow-amber-500/40'
-                        : 'bg-gradient-to-r from-indigo-500 to-indigo-400 shadow-sm shadow-indigo-500/40'
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      quotaPercent > 80 ? 'bg-amber-500' : 'bg-indigo-500'
                     }`}
                     style={{ width: `${quotaPercent}%` }}
                   />
                 </div>
 
-                <div className="flex items-center justify-between text-[10px] text-slate-500">
-                  <span className="text-slate-300 font-medium">
-                    {quotaRemaining} requests remaining today
-                  </span>
+                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <span>{quotaRemaining} requests remaining today</span>
                   <span className="flex items-center gap-1">
                     <Clock className="w-2.5 h-2.5" /> Resets 00:00 UTC
                   </span>
                 </div>
               </>
             ) : (
-              <div className="text-[10px] text-amber-300/80 flex items-center justify-between">
-                <span>All AI engines (Gemini, Claude, OpenAI) unrestricted</span>
-                <span className="text-emerald-400 font-medium">Bypass Active</span>
+              <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                <span>Full access to all AI features and developer tools</span>
+                <span className="text-emerald-400 text-[10px] font-medium">Active</span>
               </div>
             )}
           </div>
 
-          {/* Subscription Tier & Quick Upgrade Card */}
-          <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+          {/* Subscription Tier Card */}
+          <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between">
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="font-semibold text-slate-200 text-xs">
-                  {isAdmin ? 'Enterprise Super Admin' : (subscription?.plan_name || 'Free Tier')}
+                <span className="font-medium text-slate-200 text-xs">
+                  {isAdmin ? 'Admin Pass' : (subscription?.plan_name || 'Free tier')}
                 </span>
-                <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold uppercase ${
-                  isAdmin
-                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                    : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                }`}>
-                  {isAdmin ? 'Unrestricted' : (subscription?.status || 'Active')}
+                <span className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  Active
                 </span>
               </div>
-              <span className="text-[10px] text-slate-500 block mt-0.5">
+              <span className="text-[10px] text-slate-400 block mt-0.5">
                 {isAdmin
-                  ? 'Unlimited AI solves • Unlimited devices • All engines active'
+                  ? 'Unlimited solves • Unlimited devices • Multi-model support'
                   : `${subscription?.ai_usage_limit || 10} req/day • ${subscription?.device_limit || 1} device sync`}
               </span>
             </div>
@@ -470,9 +457,9 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
             {!isAdmin ? (
               <button
                 onClick={() => setActiveTab('plans')}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-all shadow-sm shadow-indigo-600/20 cursor-pointer flex items-center gap-1"
+                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-medium transition-colors cursor-pointer flex items-center gap-1"
               >
-                <span>{(subscription?.plan_id || '').toUpperCase() === 'FREE' ? 'Upgrade Plan' : 'Manage Tier'}</span>
+                <span>{(subscription?.plan_id || '').toUpperCase() === 'FREE' ? 'Upgrade' : 'Manage'}</span>
                 <ChevronRight className="w-3 h-3" />
               </button>
             ) : (
@@ -483,34 +470,32 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
                   try {
                     const code = await AuthService.createHandoffCode();
                     url = `${webUrl}/dashboard?handoff_code=${encodeURIComponent(code)}`;
-                  } catch {
-                    // Fall back to clean dashboard URL without exposing raw tokens in query params
-                  }
+                  } catch {}
                   if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
                     chrome.tabs.create({ url });
                   } else {
                     window.open(url, '_blank');
                   }
                 }}
-                className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-all border border-zinc-700 cursor-pointer"
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md text-xs font-medium flex items-center gap-1 transition-colors border border-slate-700 cursor-pointer"
               >
-                <span>Web Portal</span>
-                <ExternalLink className="w-3 h-3" />
+                <span>Web Dashboard</span>
+                <ExternalLink className="w-3 h-3 text-slate-400" />
               </button>
             )}
           </div>
 
-          {/* Administrator Card (links to Web Admin Console) */}
-          {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'SUPPORT_AGENT') && (
-            <div className="p-3 bg-amber-950/20 border border-amber-500/30 rounded-xl flex items-center justify-between animate-fade-in">
+          {/* Administrator System Card */}
+          {isAdmin && (
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300">
-                  <ShieldCheck className="w-4 h-4" />
+                <div className="p-1.5 rounded-md bg-slate-850 text-slate-300">
+                  <ShieldCheck className="w-3.5 h-3.5" />
                 </div>
                 <div>
-                  <span className="font-semibold text-amber-200 text-xs block">Administrator Account</span>
-                  <span className="text-[10px] text-amber-300/80">
-                    Role: {userRole} • System controls in Web Dashboard
+                  <span className="font-medium text-slate-200 text-xs block">Admin Console</span>
+                  <span className="text-[10px] text-slate-400">
+                    System controls, user management & telemetry
                   </span>
                 </div>
               </div>
@@ -521,37 +506,35 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
                   try {
                     const code = await AuthService.createHandoffCode();
                     url = `${webUrl}/admin?handoff_code=${encodeURIComponent(code)}`;
-                  } catch {
-                    // Fall back to clean admin URL without exposing raw tokens in query params
-                  }
+                  } catch {}
                   if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
                     chrome.tabs.create({ url });
                   } else {
                     window.open(url, '_blank');
                   }
                 }}
-                className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-all shadow-sm shadow-amber-600/20 cursor-pointer"
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md text-xs font-medium flex items-center gap-1 transition-colors border border-slate-700 cursor-pointer shrink-0"
               >
-                <span>Admin Console</span>
-                <ExternalLink className="w-3 h-3" />
+                <span>Open Console</span>
+                <ExternalLink className="w-3 h-3 text-slate-400" />
               </button>
             </div>
           )}
 
           {/* Privacy & Product Analytics Preference */}
-          <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+          <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between">
             <div className="max-w-[210px]">
               <div className="flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-                <span className="font-semibold text-slate-200 text-xs">Privacy & Telemetry</span>
+                <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
+                <span className="font-medium text-slate-200 text-xs">Privacy & Telemetry</span>
               </div>
-              <span className="text-[10px] text-slate-500 block mt-0.5 leading-tight">
+              <span className="text-[10px] text-slate-400 block mt-0.5 leading-tight">
                 {optOutAnalytics
                   ? 'Telemetry disabled. Zero usage metrics shared.'
                   : 'Anonymous latency & crash metrics enabled.'}
               </span>
-              <span className="text-[9px] text-slate-600 block mt-0.5">
-                Code, prompts & keystrokes are NEVER recorded.
+              <span className="text-[9px] text-slate-500 block mt-0.5">
+                Code, prompts, and keystrokes are never recorded.
               </span>
             </div>
 
@@ -562,10 +545,10 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
                 await AnalyticsService.setOptOut(nextVal);
                 onNotify?.(nextVal ? 'Opted out of performance metrics.' : 'Opted into anonymous performance metrics.', false);
               }}
-              className={`p-1.5 rounded-lg flex items-center gap-1 font-semibold text-xs transition-colors cursor-pointer ${
+              className={`px-2 py-1 rounded-md flex items-center gap-1 font-medium text-xs transition-colors cursor-pointer border ${
                 !optOutAnalytics
-                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25'
-                  : 'bg-slate-850 text-slate-400 border border-slate-750 hover:bg-slate-800'
+                  ? 'bg-slate-850 text-slate-200 border-slate-700 hover:bg-slate-800'
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-850'
               }`}
             >
               {!optOutAnalytics ? <ToggleRight className="w-4 h-4 text-emerald-400" /> : <ToggleLeft className="w-4 h-4 text-slate-500" />}
@@ -578,7 +561,7 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
             <span>Session ID: {user.id ? user.id.slice(0, 8) + '...' : 'local'}</span>
             <button
               onClick={logoutAll}
-              className="text-red-400 hover:text-red-300 flex items-center gap-1 hover:underline cursor-pointer"
+              className="text-slate-400 hover:text-rose-400 flex items-center gap-1 transition-colors cursor-pointer"
             >
               <LogOut className="w-3 h-3" />
               <span>Log out everywhere</span>
@@ -642,9 +625,6 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
           <div className="flex flex-col gap-2.5">
             {plans.map((p) => {
               const isCurrent = subscription?.plan_id === p.id;
-              const isAutopilot = p.id === 'PLAN_AUTOPILOT_PASS' || p.id === 'autopilot_weekly' || p.id === 'autopilot_daily';
-              const isCore = p.id === 'PLAN_CORE_PASS' || p.id === 'core_daily';
-
               const basePrice = p.price / 100;
               const discountedPrice = couponDiscountPercent > 0 && p.price > 0
                 ? Math.round(basePrice * (1 - couponDiscountPercent / 100))
@@ -653,13 +633,9 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
               return (
                 <div
                   key={p.id}
-                  className={`p-3 rounded-xl border flex flex-col gap-2.5 transition-all ${
+                  className={`p-3 rounded-lg border flex flex-col gap-2 transition-colors ${
                     isCurrent
-                      ? 'bg-indigo-950/30 border-indigo-500/60 shadow-md shadow-indigo-500/10'
-                      : isAutopilot
-                      ? 'bg-amber-950/20 border-amber-500/40 hover:border-amber-500/60'
-                      : isCore
-                      ? 'bg-emerald-950/20 border-emerald-500/40 hover:border-emerald-500/60'
+                      ? 'bg-slate-850/80 border-indigo-500/70 shadow-sm'
                       : 'bg-slate-950 border-slate-800 hover:border-slate-700'
                   }`}
                 >
@@ -667,18 +643,8 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
                     <div>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-semibold text-slate-100 text-xs">{p.name}</span>
-                        {isAutopilot && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                            ⚡ AutoPilot + 1-Click + BYOK
-                          </span>
-                        )}
-                        {isCore && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                            📋 Manual Copy • Best Value
-                          </span>
-                        )}
                         {isCurrent && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">
                             Current
                           </span>
                         )}
@@ -687,23 +653,7 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
                     </div>
 
                     <div className="text-right">
-                      {isCore && (
-                        <div className="flex items-center gap-1 justify-end">
-                          <span className="text-[10px] text-slate-500 line-through">₹99</span>
-                          <span className="text-[8px] font-bold text-emerald-400 bg-emerald-950/60 px-1 py-0.2 rounded border border-emerald-500/30">
-                            {couponDiscountPercent > 0 ? `${couponDiscountPercent}% EXTRA OFF` : '80% OFF'}
-                          </span>
-                        </div>
-                      )}
-                      {isAutopilot && (
-                        <div className="flex items-center gap-1 justify-end">
-                          <span className="text-[10px] text-slate-500 line-through">₹299</span>
-                          <span className="text-[8px] font-bold text-amber-400 bg-amber-950/60 px-1 py-0.2 rounded border border-amber-500/30">
-                            {couponDiscountPercent > 0 ? `${couponDiscountPercent}% EXTRA OFF` : '80% OFF'}
-                          </span>
-                        </div>
-                      )}
-                      <span className="text-sm font-bold text-slate-100">
+                      <span className="text-sm font-semibold text-slate-100">
                         {p.price === 0 ? 'Free' : `₹${discountedPrice}`}
                       </span>
                       {p.price > 0 && (
@@ -715,32 +665,29 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
                   </div>
 
                   {/* Feature Checklist */}
-                  <div className="grid grid-cols-3 gap-1 text-[10px] text-slate-300 pt-1.5 border-t border-slate-800/80">
-                    <span className="flex items-center gap-1">⚡ {p.ai_usage_limit} req/day</span>
-                    <span className="flex items-center gap-1">📱 {p.device_limit} device limit</span>
-                    <span className="flex items-center gap-1">🔒 {p.concurrent_session_limit} single session</span>
+                  <div className="grid grid-cols-3 gap-1 text-[10px] text-slate-400 pt-1.5 border-t border-slate-850">
+                    <span>{p.ai_usage_limit} req/day</span>
+                    <span>{p.device_limit} device</span>
+                    <span>{p.concurrent_session_limit} session</span>
                   </div>
 
                   {/* Action CTA */}
                   <div className="pt-0.5">
                     {isCurrent ? (
-                      <div className="w-full py-1.5 bg-indigo-600/15 border border-indigo-500/30 text-indigo-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>Active Plan</span>
+                      <div className="w-full py-1.5 bg-slate-800 border border-slate-700 text-slate-300 rounded-md text-xs font-medium flex items-center justify-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Active plan</span>
                       </div>
                     ) : (
                       <button
                         onClick={() => handleUpgradePlan(p)}
                         disabled={checkoutLoading === p.id}
-                        className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-900/50 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-all shadow-sm shadow-indigo-600/20 cursor-pointer"
+                        className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer"
                       >
                         {checkoutLoading === p.id ? (
                           <span>Processing order...</span>
                         ) : (
-                          <>
-                            <Zap className="w-3.5 h-3.5" />
-                            <span>Upgrade with Razorpay</span>
-                          </>
+                          <span>Upgrade</span>
                         )}
                       </button>
                     )}
@@ -774,7 +721,7 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
                     <span className="text-[10px] text-slate-500 block">{p.provider_order_id}</span>
                   </div>
                   <div className="text-right">
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-300">
                       {p.payment_status}
                     </span>
                     <span className="text-[10px] text-slate-500 block mt-0.5">
@@ -1251,13 +1198,13 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
                             </span>
                           </div>
                           <span
-                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                            className={`px-2 py-0.5 rounded text-[10px] font-medium ${
                               t.status === 'OPEN'
-                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                ? 'bg-amber-500/15 text-amber-300'
                                 : 'bg-slate-800 text-slate-400'
                             }`}
                           >
-                            {t.status}
+                            {t.status.charAt(0).toUpperCase() + t.status.slice(1).toLowerCase()}
                           </span>
                         </div>
                       ))

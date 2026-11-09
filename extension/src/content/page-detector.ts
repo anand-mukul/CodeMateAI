@@ -93,24 +93,51 @@ export class PageDetector {
       problemTitle = problemCode;
     }
 
-    // 3. Extract active language
+    // 3. Extract active language with deep framework and tab awareness
     let language = 'C++';
     const activeEditor = document.querySelector('.monaco-editor') as HTMLElement | null;
     const activeUri = activeEditor?.dataset?.uri || '';
-    const hasJavaTabs = !!document.querySelector('.tabs-container .tab[aria-label*=".java"]') ||
-      Array.from(document.querySelectorAll('.tabs-container .tab')).some(t => (t as HTMLElement).innerText.includes('.java'));
+    const inputAreaLabel = document.querySelector('.monaco-editor textarea.inputarea')?.getAttribute('aria-label') || '';
+    const breadcrumbText = document.querySelector('.monaco-breadcrumb-item, .breadcrumbs-container')?.textContent || '';
 
-    if (activeUri.endsWith('.java') || hasJavaTabs) {
+    // Check open tabs for file extensions
+    const openTabs = Array.from(document.querySelectorAll('.tabs-container .tab'));
+    const tabNames = openTabs.map(
+      (t) => t.getAttribute('data-resource-name') || t.getAttribute('aria-label') || (t as HTMLElement).innerText || ''
+    ).join(' ');
+
+    const combinedFileSignals = `${activeUri} ${inputAreaLabel} ${breadcrumbText} ${tabNames}`.toLowerCase();
+
+    // Check editor lines or view-lines snippet
+    const viewLinesSnippet = (document.querySelector('.monaco-editor .view-lines')?.textContent || '').slice(0, 500);
+
+    if (
+      combinedFileSignals.includes('.java') ||
+      /package\s+[a-zA-Z0-9_\.]+;|import\s+java\.|@service|@springboot/i.test(viewLinesSnippet)
+    ) {
       language = 'Java';
-    } else if (activeUri.endsWith('.py')) {
+    } else if (
+      combinedFileSignals.includes('.py') ||
+      /def\s+[a-zA-Z0-9_]+\s*\(|import\s+sys/i.test(viewLinesSnippet)
+    ) {
       language = 'Python3';
+    } else if (
+      combinedFileSignals.includes('.cpp') ||
+      combinedFileSignals.includes('.cc') ||
+      /#include\s*</i.test(viewLinesSnippet)
+    ) {
+      language = 'C++';
     } else {
       const langSelect =
         document.querySelector('#language-select') ||
         document.querySelector('.MuiSelect-select') ||
-        document.querySelector('[data-testid="language-select"]');
+        document.querySelector('[data-testid="language-select"]') ||
+        document.querySelector('button[id*="language"]');
       if (langSelect && langSelect.textContent) {
-        language = langSelect.textContent.trim();
+        const text = langSelect.textContent.trim();
+        if (text && text.length < 30) {
+          language = text;
+        }
       }
     }
 

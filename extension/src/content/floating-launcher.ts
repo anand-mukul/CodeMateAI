@@ -16,10 +16,12 @@ export class FloatingLauncher {
   private static readonly CONTAINER_ID = 'codemate-floating-launcher';
   private static isBusy = false;
   private static collapseTimeout: ReturnType<typeof setTimeout> | null = null;
-  private static currentProvider = 'gemini';
+  private static currentProvider = 'deepseek';
   private static currentToken: string | null = null;
   private static currentUser: any = null;
   private static currentSubscription: any = null;
+  private static activeAbortController: AbortController | null = null;
+  private static activeProjectId: string | null = null;
 
   public static getCurrentProvider(): string {
     return this.currentProvider;
@@ -54,7 +56,7 @@ export class FloatingLauncher {
     if (!solveBtn || !textSpan || this.isBusy) return;
 
     const role = (this.currentUser?.role || '').toUpperCase();
-    const isPrivileged = ['SUPER_ADMIN', 'ADMIN', 'ANALYST', 'SUPPORT_AGENT'].includes(role);
+    const isPrivileged = role === 'ADMIN';
     const planId = (this.currentSubscription?.plan_id || '').toUpperCase();
     const entitlements: string[] = this.currentSubscription?.entitlements || [];
     const hasAutopilot = isPrivileged || planId === 'PLAN_AUTOPILOT_PASS' || entitlements.includes('one_click_insert') || entitlements.includes('autopilot');
@@ -70,7 +72,7 @@ export class FloatingLauncher {
     } else {
       textSpan.textContent = 'Auto-Pilot Solve';
       solveBtn.title = hasAutopilot
-        ? '1-Click Auto Solve: Complete code, insert, run, submit, and next'
+        ? '1-Click Solve: Write optimal solution and insert directly into editor'
         : 'Auto-Pilot Solve (AutoPilot Pass required for direct editor insertion)';
       this.applyTheme(this.currentProvider);
     }
@@ -308,7 +310,9 @@ export class FloatingLauncher {
           z-index: 999999;
           height: 48px;
           width: 48px;
+          max-width: calc(100vw - 32px);
           border-radius: 24px;
+          overflow: hidden;
           background: rgba(10, 15, 29, 0.95);
           backdrop-filter: blur(16px);
           -webkit-backdrop-filter: blur(16px);
@@ -320,6 +324,7 @@ export class FloatingLauncher {
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 16px rgba(66, 133, 244, 0.3);
           transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          transform-origin: right center;
         }
         #codemate-floating-launcher::before {
           content: '';
@@ -407,19 +412,21 @@ export class FloatingLauncher {
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 0 12px;
+      padding: 0 16px 0 16px;
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.2s ease 0.05s;
       white-space: nowrap;
       flex: 1;
+      min-width: 0;
       z-index: 2;
+      overflow: hidden;
     `;
 
     // 1-Click Smart Auto Solve & Run Button
     const solveBtn = document.createElement('button');
     solveBtn.className = 'cm-btn-solve';
-    solveBtn.title = '1-Click Auto Solve: Complete code, insert, run, submit, and next';
+    solveBtn.title = '1-Click Solve: Write optimal solution and insert directly into editor';
     solveBtn.style.cssText = `
       background: linear-gradient(135deg, #4285F4 0%, #9B72CB 100%);
       color: #ffffff;
@@ -435,12 +442,14 @@ export class FloatingLauncher {
       box-shadow: 0 2px 10px rgba(66, 133, 244, 0.4);
       transition: all 0.2s ease;
       outline: none;
+      max-width: clamp(140px, 25vw, 240px);
+      min-width: 0;
     `;
     solveBtn.innerHTML = `
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
         <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
       </svg>
-      <span class="cm-solve-text">Auto-Pilot Solve</span>
+      <span class="cm-solve-text" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block;">Auto-Pilot Solve</span>
     `;
 
     // Divider
@@ -504,8 +513,13 @@ export class FloatingLauncher {
       </svg>
     `;
     minBtn.addEventListener('mouseenter', () => {
-      minBtn.style.color = '#ffffff';
-      minBtn.style.background = 'rgba(255, 255, 255, 0.1)';
+      if (FloatingLauncher.isBusy) {
+        minBtn.style.color = '#f87171';
+        minBtn.style.background = 'rgba(239, 68, 68, 0.15)';
+      } else {
+        minBtn.style.color = '#ffffff';
+        minBtn.style.background = 'rgba(255, 255, 255, 0.1)';
+      }
     });
     minBtn.addEventListener('mouseleave', () => {
       minBtn.style.color = '#94a3b8';
@@ -548,6 +562,13 @@ export class FloatingLauncher {
 
     minBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+
+      // If actively solving: abort immediately instead of minimizing
+      if (FloatingLauncher.isBusy) {
+        FloatingLauncher.abortActiveSolve(solveBtn, container);
+        return;
+      }
+
       container.style.display = 'none';
       minTab.style.display = 'flex';
       try {
@@ -652,7 +673,7 @@ export class FloatingLauncher {
       }
 
       const role = (this.currentUser?.role || '').toUpperCase();
-      const isPrivileged = ['SUPER_ADMIN', 'ADMIN', 'ANALYST', 'SUPPORT_AGENT'].includes(role);
+      const isPrivileged = role === 'ADMIN';
       const planId = (this.currentSubscription?.plan_id || '').toUpperCase();
       const entitlements: string[] = this.currentSubscription?.entitlements || [];
       const hasAutopilot = isPrivileged || planId === 'PLAN_AUTOPILOT_PASS' || entitlements.includes('one_click_insert') || entitlements.includes('autopilot');
@@ -800,6 +821,54 @@ export class FloatingLauncher {
   }
 
   /**
+   * Immediately aborts any active 1-Click Solve pipeline.
+   * Cancels the AbortController, purges the backend ephemeral session, and resets pill UI.
+   */
+  private static abortActiveSolve(solveBtn: HTMLButtonElement, container: HTMLElement): void {
+    console.log('[CodeMate AI] 🛑 User aborted active solve. Releasing resources...');
+    
+    // Cancel active network request
+    if (this.activeAbortController) {
+      this.activeAbortController.abort();
+      this.activeAbortController = null;
+    }
+
+    // Purge the backend ephemeral session asynchronously
+    if (this.activeProjectId) {
+      const projectId = this.activeProjectId;
+      this.activeProjectId = null;
+      try {
+        chrome.storage.local.get(['codemate_ai_settings_v1', 'codemate_auth_tokens_v1'], (st) => {
+          const settings = st.codemate_ai_settings_v1 || {};
+          const baseUrl = settings.backendUrl || 'http://localhost:8000';
+          chrome.runtime.sendMessage({
+            type: 'SECURE_FORWARD_API',
+            endpoint: `/api/projects/ephemeral/${projectId}`,
+            method: 'DELETE',
+            baseUrl,
+          });
+        });
+      } catch {}
+    }
+
+    // Reset UI immediately
+    this.isBusy = false;
+    const textSpan = solveBtn.querySelector('.cm-solve-text') as HTMLElement | null;
+    if (textSpan) textSpan.textContent = 'Auto-Pilot Solve';
+    solveBtn.style.background = 'linear-gradient(135deg, #4285F4 0%, #9B72CB 100%)';
+
+    const companionBtn = container.querySelector('.cm-btn-companion') as HTMLElement | null;
+    const divider = container.querySelector('.cm-expanded-content > div') as HTMLElement | null;
+    const minBtn = container.querySelector('.cm-btn-minimize') as HTMLButtonElement | null;
+    if (companionBtn) companionBtn.style.display = 'flex';
+    if (divider) divider.style.display = 'block';
+    if (minBtn) minBtn.title = 'Dock CodeMate to screen edge';
+    container.style.width = '320px';
+    
+    FloatingLauncher.showToast('⚠️ Solve cancelled. Session released.', 'warning');
+  }
+
+  /**
    * Executes the full 1-Click Auto Solve & Run pipeline
    */
   private static async execute1ClickSolve(
@@ -808,11 +877,35 @@ export class FloatingLauncher {
     onFinishCollapse: () => void
   ): Promise<void> {
     this.isBusy = true;
-    container.style.width = '335px';
+    container.style.width = 'fit-content';
+    container.style.maxWidth = 'calc(100vw - 32px)';
+    container.style.overflow = 'hidden';
+
+    // Hide companion button and divider during active solve to prevent pill overflow
+    const companionBtn = container.querySelector('.cm-btn-companion') as HTMLElement | null;
+    const divider = container.querySelector('.cm-expanded-content > div') as HTMLElement | null;
+    const minBtn = container.querySelector('.cm-btn-minimize') as HTMLButtonElement | null;
+    if (companionBtn) companionBtn.style.display = 'none';
+    if (divider) divider.style.display = 'none';
+    if (minBtn) minBtn.title = 'Cancel Auto-Pilot Solve';
+
     const textSpan = solveBtn.querySelector('.cm-solve-text') as HTMLElement;
 
+    const restoreLauncherControls = () => {
+      if (companionBtn) companionBtn.style.display = 'flex';
+      if (divider) divider.style.display = 'block';
+      if (minBtn) minBtn.title = 'Dock CodeMate to screen edge';
+    };
+
     const setStatus = (msg: string, bg = 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)') => {
-      if (textSpan) textSpan.textContent = msg;
+      if (textSpan) {
+        textSpan.textContent = msg;
+        textSpan.title = msg;
+        textSpan.style.maxWidth = '180px';
+        textSpan.style.overflow = 'hidden';
+        textSpan.style.textOverflow = 'ellipsis';
+        textSpan.style.whiteSpace = 'nowrap';
+      }
       solveBtn.style.background = bg;
     };
 
@@ -852,7 +945,7 @@ export class FloatingLauncher {
       }
 
       const role = (authState.user?.role || '').toUpperCase();
-      const isPrivileged = ['SUPER_ADMIN', 'ADMIN', 'ANALYST', 'SUPPORT_AGENT'].includes(role);
+      const isPrivileged = role === 'ADMIN';
       const sub = await new Promise<any>((res) => {
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
           chrome.storage.local.get(['codemate_subscription_v1'], (st) => res(st.codemate_subscription_v1));
@@ -882,15 +975,19 @@ export class FloatingLauncher {
       }
 
       const settings = await StorageService.getSettings();
-      const activeProvider = settings.activeProvider || 'gemini';
-      const activeModel = settings.selectedModel || undefined;
-      const apiKey = settings.aiMode === 'byok' ? settings.byokVault[activeProvider.toLowerCase()] : undefined;
+      const isManaged = settings.aiMode === 'managed';
+      const activeProvider = isManaged ? undefined : (settings.activeProvider || undefined);
+      const activeModel = isManaged ? undefined : (settings.selectedModel || undefined);
+      const apiKey = (!isManaged && settings.aiMode === 'byok' && activeProvider)
+        ? settings.byokVault[activeProvider.toLowerCase()]
+        : undefined;
+      const baseUrl = settings.backendUrl || 'http://localhost:8000';
 
-      // Check if multi-file Monaco/Code-OSS workbench or single-file editor
+      // Check if multi-file Monaco/Code-OSS workbench with multiple file tabs
       const isMultiFile = !!(
-        document.querySelector('.monaco-workbench') ||
-        document.querySelector('.tabs-container .tab') ||
-        document.querySelector('.monaco-editor')
+        document.querySelector('.monaco-workbench') &&
+        (document.querySelectorAll('.tabs-container .tab').length > 1 ||
+         document.querySelectorAll('.tab[role="tab"]').length > 1)
       );
 
       if (isMultiFile) {
@@ -961,6 +1058,7 @@ export class FloatingLauncher {
                 type: 'SECURE_FORWARD_API',
                 endpoint: '/api/projects/ephemeral/blueprint',
                 payload: blueprintReq,
+                baseUrl,
                 provider: activeProvider,
                 model: activeModel,
                 apiKey,
@@ -979,24 +1077,102 @@ export class FloatingLauncher {
             throw new Error(blueprintRes.error || 'Failed to generate project blueprint');
           }
 
+          // Wire Active Session and AbortController for instant cancellation
+          FloatingLauncher.activeProjectId = blueprintRes.data.project_id;
+          FloatingLauncher.activeAbortController = new AbortController();
+
           const executionPlan = blueprintRes.data.execution_plan;
           const completedFilesContext: Record<string, string> = { ...harvestedFiles };
           const actionableSteps = executionPlan.filter(
             (step) => step.action === 'MODIFY'
           );
 
+          // Natural Tab-Order: Prioritize currently open active editor tab for Step 1
+          const activeBreadcrumb = document.querySelector('.monaco-breadcrumb-item:last-child');
+          const activeTabNode = document.querySelector('.tabs-container .tab.active, .tabs-container .tab[aria-selected="true"]');
+          const rawActive = (activeBreadcrumb?.textContent || activeTabNode?.textContent || '').trim().toLowerCase();
+          if (rawActive) {
+            actionableSteps.sort((a, b) => {
+              const aName = a.filename.toLowerCase();
+              const bName = b.filename.toLowerCase();
+              const aMatch = rawActive.includes(aName) || aName.includes(rawActive);
+              const bMatch = rawActive.includes(bName) || bName.includes(rawActive);
+              if (aMatch && !bMatch) return -1;
+              if (!aMatch && bMatch) return 1;
+              return 0;
+            });
+          }
+
           const totalActionable = actionableSteps.length;
+
+          // Initialize Persistent Multi-File Session History in chrome.storage for Sidepanel UI
+          try {
+            chrome.storage.local.set({
+              codemate_multifile_session_v1: {
+                project_id: blueprintRes.data.project_id,
+                problem_title: problem.problemTitle || problem.problemCode || 'Project Task',
+                problem_statement: problem.problemStatement || '',
+                selected_language: lang,
+                total_files: totalActionable,
+                status: 'in_progress',
+                timestamp: Date.now(),
+                initial_files: { ...harvestedFiles },
+                files: actionableSteps.map((s) => ({
+                  filename: s.filename,
+                  role: s.role,
+                  action: s.action,
+                  status: 'pending',
+                  initial_code: harvestedFiles[s.filename] || '',
+                  code: '',
+                })),
+              },
+            });
+          } catch (stErr) {
+            console.warn('[CodeMate AI] Failed initializing session storage:', stErr);
+          }
+
           let currentStepIdx = 0;
 
-          // Stage 2: Progressive File-by-File Completion & Instant Editor Insertion
+          // Stage 2: Sequential Step-by-Step Memory Context Execution
           for (const step of actionableSteps) {
+            if (!this.isBusy) {
+              console.log('[CodeMate AI] Aborting multi-file solve loop (user cancelled)');
+              break;
+            }
+
             currentStepIdx++;
+            setStatus(`Switching to ${step.filename} [${currentStepIdx}/${totalActionable}]...`);
+
+            // Step A: Switch active Monaco editor to target file tab and allow Monaco to mount
+            const switched = await this.switchTabOnPage(step.filename);
+            if (!switched) {
+              await this.openFileOnPage(step.filename);
+            }
+            await new Promise((r) => setTimeout(r, 400));
+
+            if (!this.isBusy) break;
+
+            // Step B: Read true unvirtualized starter code directly from active editor
+            let activeStarterCode = '';
+            try {
+              const editorCodeRes = await this.queryEditorCode();
+              if (editorCodeRes && editorCodeRes.code && editorCodeRes.code.trim().length > 0) {
+                activeStarterCode = editorCodeRes.code;
+              }
+            } catch (readErr) {
+              console.warn('[CodeMate AI] queryEditorCode error for step:', readErr);
+            }
+            if (!activeStarterCode && harvestedFiles[step.filename]) {
+              activeStarterCode = harvestedFiles[step.filename];
+            }
+
+            // Step C: Send true file content to ongoing memory session
             setStatus(`Solving ${step.filename} [${currentStepIdx}/${totalActionable}]...`);
 
             const completeReq = {
               project_id: blueprintRes.data.project_id,
               filename: step.filename,
-              file_content: harvestedFiles[step.filename] || '',
+              file_content: activeStarterCode,
               problem_title: problem.problemTitle || 'Task',
               problem_statement: problem.problemStatement || '',
               selected_language: lang,
@@ -1013,6 +1189,7 @@ export class FloatingLauncher {
                   type: 'SECURE_FORWARD_API',
                   endpoint: '/api/projects/ephemeral/complete-file',
                   payload: completeReq,
+                  baseUrl,
                   provider: activeProvider,
                   model: activeModel,
                   apiKey,
@@ -1027,21 +1204,64 @@ export class FloatingLauncher {
               );
             });
 
+            if (!this.isBusy) break;
+
             if (completeRes.success && completeRes.data?.code) {
               const completedCode = completeRes.data.code;
               completedFilesContext[step.filename] = completedCode;
 
-              // Switch to the target file tab
-              await this.switchTabOnPage(step.filename);
-              await new Promise((r) => setTimeout(r, 120));
-
-              // Insert the completed code safely into Monaco with explicit target file
+              // Step D: Insert completed code atomically into active editor
+              setStatus(`Updating ${step.filename}...`);
               await this.insertCodeIntoEditor(completedCode, step.filename);
-              await new Promise((r) => setTimeout(r, 150));
+
+              // Update persistent session storage with completed code
+              try {
+                chrome.storage.local.get(['codemate_multifile_session_v1'], (st) => {
+                  const sess = st?.codemate_multifile_session_v1;
+                  if (sess && Array.isArray(sess.files)) {
+                    const targetFileObj = sess.files.find((f: any) => f.filename === step.filename);
+                    if (targetFileObj) {
+                      targetFileObj.status = 'completed';
+                      targetFileObj.code = completedCode;
+                    }
+                    chrome.storage.local.set({ codemate_multifile_session_v1: sess });
+                  }
+                });
+              } catch {}
+
+              // Step E: Wait settle period between files (allows compiler & DOM to process)
+              await new Promise((r) => setTimeout(r, 1200));
             }
           }
 
-          // Stage 3: Trigger Run & Test
+          // Mark session completed if not cancelled
+          if (this.isBusy) {
+            try {
+              chrome.storage.local.get(['codemate_multifile_session_v1'], (st) => {
+                const sess = st?.codemate_multifile_session_v1;
+                if (sess) {
+                  sess.status = 'completed';
+                  chrome.storage.local.set({ codemate_multifile_session_v1: sess });
+                }
+              });
+            } catch {}
+          }
+
+          // Stage 3: Release and Purge Ephemeral Memory Context Session
+          try {
+            chrome.runtime.sendMessage({
+              type: 'SECURE_FORWARD_API',
+              endpoint: `/api/projects/ephemeral/${blueprintRes.data.project_id}`,
+              method: 'DELETE',
+              baseUrl,
+            });
+          } catch (delErr) {
+            console.warn('[CodeMate AI] Ephemeral session purge error:', delErr);
+          }
+          FloatingLauncher.activeProjectId = null;
+          FloatingLauncher.activeAbortController = null;
+
+          // Stage 4: Trigger Run & Test
           setStatus('Running App...', 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)');
           const runTriggered = await this.triggerRunOnPage();
 
@@ -1053,18 +1273,11 @@ export class FloatingLauncher {
               const runStatus = await this.getRunStatusFromPage();
               if (runStatus.status === 'SUCCESS') {
                 clearInterval(pollTimer);
-                setStatus('✓ Tests Passed! Submitting...', 'linear-gradient(135deg, #10b981 0%, #059669 100%)');
-                await this.triggerSubmitOnPage();
-                await new Promise((r) => setTimeout(r, 2200));
-                const nextTriggered = await this.triggerNextOnPage();
-                if (nextTriggered) {
-                  setStatus('✓ Submitted! Next Module ▶', 'linear-gradient(135deg, #10b981 0%, #059669 100%)');
-                } else {
-                  setStatus('✓ App Verified & Submitted!', 'linear-gradient(135deg, #10b981 0%, #059669 100%)');
-                }
+                setStatus('✓ App Verified! Review & Submit', 'linear-gradient(135deg, #10b981 0%, #059669 100%)');
                 setTimeout(() => {
                   this.isBusy = false;
-                  setStatus('Auto-Pilot Solve');
+                  setStatus('1-Click Auto Solve');
+                  restoreLauncherControls();
                   onFinishCollapse();
                 }, 3500);
               } else if (checks > 10) {
@@ -1072,7 +1285,8 @@ export class FloatingLauncher {
                 setStatus('✓ Project Updated & Running!', 'linear-gradient(135deg, #10b981 0%, #059669 100%)');
                 setTimeout(() => {
                   this.isBusy = false;
-                  setStatus('Auto-Pilot Solve');
+                  setStatus('1-Click Auto Solve');
+                  restoreLauncherControls();
                   onFinishCollapse();
                 }, 3500);
               }
@@ -1082,6 +1296,7 @@ export class FloatingLauncher {
             setTimeout(() => {
               this.isBusy = false;
               setStatus('Auto-Pilot Solve');
+              restoreLauncherControls();
               onFinishCollapse();
             }, 3000);
           }
@@ -1139,11 +1354,7 @@ export class FloatingLauncher {
         if (Object.keys(filesMap).length > 0) {
           await this.applyMultiFileUpdates(filesMap);
         } else if (response.data?.code) {
-          // Cross-verify target file name before inserting to prevent file contamination across React, Spring Boot, Python
-          const targetFile = this.inferTargetFilename(response.data.code, lang);
-          if (targetFile) {
-            await this.switchTabOnPage(targetFile);
-          }
+          // Retain code insertion in the active editor without filename-to-class redirection
           await this.insertCodeIntoEditor(response.data.code);
         }
 
@@ -1192,7 +1403,7 @@ export class FloatingLauncher {
 
       const response = await new Promise<{ success: boolean; data?: { code: string }; error?: string }>((resolve) => {
         chrome.runtime.sendMessage(
-          { type: 'SOLVE_PROBLEM_AUTO', payload, provider: activeProvider, model: activeModel, apiKey },
+          { type: 'SOLVE_PROBLEM_AUTO', payload, baseUrl, provider: activeProvider, model: activeModel, apiKey },
           (res) => {
             if (chrome.runtime.lastError) {
               resolve({ success: false, error: chrome.runtime.lastError.message });
@@ -1207,12 +1418,8 @@ export class FloatingLauncher {
         throw new Error(response.error || 'Failed to generate solution');
       }
 
-      // 5. Replace Code in Ace Editor
+      // 5. Replace Code in Editor
       setStatus('Inserting Code...');
-      const targetFile = this.inferTargetFilename(response.data.code, lang);
-      if (targetFile) {
-        await this.switchTabOnPage(targetFile);
-      }
       await this.insertCodeIntoEditor(response.data.code);
 
       // 6. Trigger Test Run on CodeChef
@@ -1227,18 +1434,10 @@ export class FloatingLauncher {
           const runStatus = await this.getRunStatusFromPage();
           if (runStatus.status === 'SUCCESS') {
             clearInterval(pollTimer);
-            setStatus('✓ Tests Passed! Submitting...', 'linear-gradient(135deg, #10b981 0%, #059669 100%)');
-            await this.triggerSubmitOnPage();
-            await new Promise((r) => setTimeout(r, 2200));
-            const nextTriggered = await this.triggerNextOnPage();
-            if (nextTriggered) {
-              setStatus('✓ Submitted! Next Problem ▶', 'linear-gradient(135deg, #10b981 0%, #059669 100%)');
-            } else {
-              setStatus('✓ Submitted Successfully!', 'linear-gradient(135deg, #10b981 0%, #059669 100%)');
-            }
+            setStatus('✓ Tests Passed! Review & Submit', 'linear-gradient(135deg, #10b981 0%, #059669 100%)');
             setTimeout(() => {
               this.isBusy = false;
-              setStatus('Auto-Pilot Solve');
+              setStatus('1-Click Auto Solve');
               onFinishCollapse();
             }, 3500);
           } else if (runStatus.status === 'ERROR') {
@@ -1246,7 +1445,7 @@ export class FloatingLauncher {
             setStatus('⚠️ Error! Check Panel', 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)');
             setTimeout(() => {
               this.isBusy = false;
-              setStatus('Auto-Pilot Solve');
+              setStatus('1-Click Auto Solve');
               onFinishCollapse();
             }, 4000);
           } else if (checks > 12) {
@@ -1254,21 +1453,19 @@ export class FloatingLauncher {
             setStatus('✓ Replaced! (Ctrl+Z)', 'linear-gradient(135deg, #10b981 0%, #059669 100%)');
             setTimeout(() => {
               this.isBusy = false;
-              setStatus('Auto-Pilot Solve');
+              setStatus('1-Click Auto Solve');
               onFinishCollapse();
-            }, 3000);
+            }, 3500);
           }
         }, 1000);
       } else {
-        // If Run button wasn't clicked, show clean replacement confirmation
-        setStatus('✓ Replaced! (Ctrl+Z)', 'linear-gradient(135deg, #10b981 0%, #059669 100%)');
+        setStatus('✓ Code Inserted! (Ctrl+Z)', 'linear-gradient(135deg, #10b981 0%, #059669 100%)');
         setTimeout(() => {
           this.isBusy = false;
-          setStatus('Auto-Pilot Solve');
+          setStatus('1-Click Auto Solve');
           onFinishCollapse();
         }, 3000);
       }
-
     } catch (err) {
       console.error('[CodeMate AI] 1-Click Auto Solve failed:', err);
       const errMessage = err instanceof Error ? err.message : 'Error';
@@ -1281,6 +1478,9 @@ export class FloatingLauncher {
       } else {
         setStatus(`⚠️ ${errMessage.slice(0, 18)}`, '#ef4444');
       }
+      FloatingLauncher.activeProjectId = null;
+      FloatingLauncher.activeAbortController = null;
+      restoreLauncherControls();
       setTimeout(() => {
         this.isBusy = false;
         setStatus('1-Click Auto Solve');
@@ -1325,7 +1525,7 @@ export class FloatingLauncher {
   private static insertCodeIntoEditor(code: string, targetFile?: string): Promise<boolean> {
     return new Promise((resolve, reject) => {
       const nonce = `cm_insert_${Date.now()}`;
-      const timer = setTimeout(() => reject(new Error('Timeout inserting code')), 3500);
+      const timer = setTimeout(() => reject(new Error('Timeout inserting code')), 8000);
 
       const handler = (event: Event) => {
         const customEvent = event as CustomEvent<{ nonce: string; success: boolean }>;
@@ -1376,33 +1576,31 @@ export class FloatingLauncher {
   }
 
   /**
-   * Framework-agnostic target filename inference (Java, React/TS, Python, C++)
+   * Helper to open file via Explorer tree fallback via DOM bridge
    */
-  private static inferTargetFilename(code: string, currentLang: string): string | null {
-    if (!code) return null;
+  private static openFileOnPage(fileName: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const nonce = `cm_open_${Date.now()}`;
+      const timer = setTimeout(() => resolve(false), 2000);
 
-    // Java: public class StudentService -> StudentService.java
-    const javaMatch = code.match(/public\s+(?:class|interface|enum|record)\s+([A-Za-z0-9_]+)/);
-    if (javaMatch && javaMatch[1]) {
-      return `${javaMatch[1]}.java`;
-    }
+      const handler = (event: Event) => {
+        const customEvent = event as CustomEvent<{ nonce: string; success: boolean }>;
+        if (customEvent.detail && customEvent.detail.nonce === nonce) {
+          clearTimeout(timer);
+          window.removeEventListener('CODEMATE_RESPONSE', handler);
+          resolve(!!customEvent.detail.success);
+        }
+      };
 
-    // React / TypeScript: export default function App / const Navbar: React.FC
-    const reactMatch = code.match(/(?:export\s+default\s+(?:function|class)\s+([A-Za-z0-9_]+)|const\s+([A-Za-z0-9_]+)\s*:\s*React\.FC)/);
-    const reactName = reactMatch ? (reactMatch[1] || reactMatch[2]) : null;
-    if (reactName) {
-      return `${reactName}.tsx`;
-    }
-
-    // Python: class UserService -> user_service.py
-    const pyMatch = code.match(/class\s+([A-Za-z0-9_]+)/);
-    if (pyMatch && pyMatch[1] && currentLang.toLowerCase().includes('py')) {
-      const snake = pyMatch[1].replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
-      return `${snake}.py`;
-    }
-
-    return null;
+      window.addEventListener('CODEMATE_RESPONSE', handler);
+      window.dispatchEvent(
+        new CustomEvent('CODEMATE_REQUEST', {
+          detail: { nonce, operation: 'OPEN_FILE', payload: { fileName } },
+        })
+      );
+    });
   }
+
 
   /**
    * Helper to trigger Run button in MAIN world
@@ -1425,58 +1623,6 @@ export class FloatingLauncher {
       window.dispatchEvent(
         new CustomEvent('CODEMATE_REQUEST', {
           detail: { nonce, operation: 'TRIGGER_RUN' },
-        })
-      );
-    });
-  }
-
-  /**
-   * Helper to trigger Submit button in MAIN world
-   */
-  private static triggerSubmitOnPage(): Promise<boolean> {
-    return new Promise((resolve) => {
-      const nonce = `cm_submit_${Date.now()}`;
-      const timer = setTimeout(() => resolve(false), 2000);
-
-      const handler = (event: Event) => {
-        const customEvent = event as CustomEvent<{ nonce: string; success: boolean }>;
-        if (customEvent.detail && customEvent.detail.nonce === nonce) {
-          clearTimeout(timer);
-          window.removeEventListener('CODEMATE_RESPONSE', handler);
-          resolve(!!customEvent.detail.success);
-        }
-      };
-
-      window.addEventListener('CODEMATE_RESPONSE', handler);
-      window.dispatchEvent(
-        new CustomEvent('CODEMATE_REQUEST', {
-          detail: { nonce, operation: 'TRIGGER_SUBMIT' },
-        })
-      );
-    });
-  }
-
-  /**
-   * Helper to trigger Next problem / Next module button in MAIN world
-   */
-  private static triggerNextOnPage(): Promise<boolean> {
-    return new Promise((resolve) => {
-      const nonce = `cm_next_${Date.now()}`;
-      const timer = setTimeout(() => resolve(false), 2000);
-
-      const handler = (event: Event) => {
-        const customEvent = event as CustomEvent<{ nonce: string; success: boolean }>;
-        if (customEvent.detail && customEvent.detail.nonce === nonce) {
-          clearTimeout(timer);
-          window.removeEventListener('CODEMATE_RESPONSE', handler);
-          resolve(!!customEvent.detail.success);
-        }
-      };
-
-      window.addEventListener('CODEMATE_RESPONSE', handler);
-      window.dispatchEvent(
-        new CustomEvent('CODEMATE_REQUEST', {
-          detail: { nonce, operation: 'TRIGGER_NEXT' },
         })
       );
     });

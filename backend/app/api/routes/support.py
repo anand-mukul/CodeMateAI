@@ -146,7 +146,7 @@ async def get_ticket_details(
     if not ticket:
         raise HTTPException(status_code=404, detail="Support ticket not found.")
 
-    is_staff = (user.role or "").upper() in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value, UserRole.SUPPORT_AGENT.value)
+    is_staff = (user.role or "").upper() == UserRole.ADMIN.value
     if not is_staff and ticket.user_id != user.id:
         raise HTTPException(status_code=403, detail="Unauthorized to access this support ticket.")
 
@@ -195,11 +195,11 @@ async def reply_to_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Support ticket not found.")
 
-    is_staff = (user.role or "").upper() in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value, UserRole.SUPPORT_AGENT.value)
+    is_staff = (user.role or "").upper() == UserRole.ADMIN.value
     if not is_staff and ticket.user_id != user.id:
         raise HTTPException(status_code=403, detail="Unauthorized to reply to this ticket.")
 
-    sender_role = (user.role or UserRole.SUPPORT_AGENT.value).upper() if is_staff else UserRole.USER.value
+    sender_role = UserRole.ADMIN.value if is_staff else UserRole.USER.value
     msg = SupportMessage(
         ticket_id=ticket.id,
         sender_id=user.id,
@@ -292,7 +292,7 @@ async def post_internal_note(
     note = SupportMessage(
         ticket_id=ticket.id,
         sender_id=admin.id,
-        sender_role=(admin.role or UserRole.SUPPORT_AGENT.value).upper(),
+        sender_role=(admin.role or UserRole.ADMIN.value).upper(),
         message_text=payload.message_text,
         is_internal_note=True,
     )

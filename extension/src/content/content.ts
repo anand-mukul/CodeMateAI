@@ -135,12 +135,16 @@ import { ClipboardManager } from '../clipboard/clipboard-manager';
   }
 
   // --- BI-DIRECTIONAL AUTH SYNCHRONIZATION BRIDGE (Web <-> Extension) ---
+  const configuredPortalUrl = (import.meta as any).env?.VITE_WEB_PORTAL_URL || 'http://localhost:3000';
+  let configuredPortalHost = '';
+  try {
+    configuredPortalHost = new URL(configuredPortalUrl).hostname;
+  } catch {}
+
   const isCodemateWeb =
     window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1' ||
-    window.location.hostname === 'codemateai.com' ||
-    window.location.hostname.endsWith('.codemateai.com') ||
-    window.location.origin === 'https://codemate-frontend.onrender.com';
+    (configuredPortalHost !== '' && window.location.hostname === configuredPortalHost);
 
   if (isCodemateWeb) {
     // 1. Proactively push existing extension session to web dashboard on load with exact targetOrigin

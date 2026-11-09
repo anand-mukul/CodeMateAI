@@ -1,9 +1,3 @@
-/**
- * CodeMate AI — Mandatory Authentication Gate (AuthGate.tsx)
- * Blocks unauthenticated access to the extension and provides a streamlined,
- * high-conversion sign-in, registration, and web portal handshake experience.
- */
-
 import React, { useState } from 'react';
 import {
   Lock,
@@ -11,14 +5,8 @@ import {
   User,
   Eye,
   EyeOff,
-  Sparkles,
-  ArrowRight,
-  ShieldCheck,
-  CheckCircle2,
-  ExternalLink,
   Code2,
-  Zap,
-  Key,
+  ExternalLink,
   ClipboardPaste,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -31,7 +19,7 @@ interface AuthGateProps {
 export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
   const { login, register, loginWithToken } = useAuth();
 
-  const [tab, setTab] = useState<'signin' | 'signup' | 'forgot' | 'token'>('signin');
+  const [tab, setTab] = useState<'signin' | 'signup' | 'token'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -48,14 +36,10 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
     try {
       if (tab === 'signin') {
         await login(email, password);
-        onNotify?.('✓ Welcome back! Authentication successful.', false);
+        onNotify?.('Signed in successfully', false);
       } else if (tab === 'signup') {
         await register(email, password, displayName);
-        onNotify?.('✓ Account created and signed in!', false);
-      } else if (tab === 'forgot') {
-        const res = await AuthService.forgotPassword(email);
-        onNotify?.(res.message, false);
-        setTab('signin');
+        onNotify?.('Account created and signed in', false);
       } else if (tab === 'token') {
         await handleTokenLogin();
       }
@@ -78,7 +62,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
     setLoading(true);
     try {
       await loginWithToken(clean);
-      onNotify?.('✓ Extension successfully linked with your web portal session!', false);
+      onNotify?.('Linked session successfully', false);
     } catch (err: any) {
       const msg = err.data?.detail || err.message || 'Invalid or expired session token.';
       setLocalError(msg);
@@ -95,7 +79,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
         setSessionTokenInput(text.trim());
       }
     } catch {
-      // Permission or fallback
+      // ignore
     }
   };
 
@@ -109,7 +93,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
         const code = await AuthService.createHandoffCode();
         dest = `${webUrl}/dashboard?handoff_code=${encodeURIComponent(code)}`;
       } catch {
-        // Fall back to clean dashboard URL without exposing raw tokens in query params
+        // Fall back
       }
     }
     if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
@@ -120,279 +104,189 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onNotify }) => {
   };
 
   return (
-    <div className="flex flex-col gap-3.5 animate-fade-in text-slate-100">
-      {/* Brand Hero Card */}
-      <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-950/70 via-slate-900 to-purple-950/50 border border-indigo-500/30 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
-
-        <div className="flex items-center gap-2.5 mb-2">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
-            <Sparkles className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-white tracking-tight flex items-center gap-1.5">
-              CodeMate AI <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Sign In Required</span>
-            </h2>
-            <p className="text-[11px] text-slate-300">Intelligent Coding Companion & Autopilot</p>
-          </div>
+    <div className="flex flex-col gap-3 py-2 text-slate-100">
+      {/* Quiet Header */}
+      <div className="flex flex-col items-center text-center gap-1.5 pt-2 pb-1">
+        <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
+          <Code2 className="w-5 h-5" />
         </div>
-
-        <p className="text-xs text-slate-300 leading-relaxed mt-1">
-          Sign in or create your developer account to access automated problem solving, progressive multi-file code completion, and cloud telemetry.
-        </p>
-
-        {/* Feature Highlights */}
-        <div className="grid grid-cols-2 gap-1.5 mt-3 pt-3 border-t border-indigo-500/20 text-[10px] text-slate-300">
-          <div className="flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span>1-Click Auto Solve</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Code2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-            <span>Multi-File Spring & React</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>Zero-Keystroke Paste</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-            <span>Quota & Device Sync</span>
-          </div>
+        <div>
+          <h2 className="text-sm font-semibold text-white">Sign in to CodeMate</h2>
+          <p className="text-[11px] text-slate-400">Continue with your account to solve problems</p>
         </div>
       </div>
 
+      {/* Segmented Tab Switcher */}
+      <div className="flex items-center p-0.5 bg-slate-900 rounded-lg border border-slate-800 text-xs">
+        <button
+          type="button"
+          onClick={() => {
+            setTab('signin');
+            setLocalError(null);
+          }}
+          className={`flex-1 py-1.5 text-center font-medium rounded-md transition-colors ${
+            tab === 'signin'
+              ? 'bg-slate-800 text-white'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Sign in
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setTab('signup');
+            setLocalError(null);
+          }}
+          className={`flex-1 py-1.5 text-center font-medium rounded-md transition-colors ${
+            tab === 'signup'
+              ? 'bg-slate-800 text-white'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Create account
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setTab('token');
+            setLocalError(null);
+          }}
+          className={`flex-1 py-1.5 text-center font-medium rounded-md transition-colors ${
+            tab === 'token'
+              ? 'bg-slate-800 text-white'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Web token
+        </button>
+      </div>
 
-      {/* Auth Card */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
-        {/* Tab Toggle */}
-        <div className="flex items-center p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs gap-1">
+      {/* Error Alert */}
+      {localError && (
+        <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs leading-tight">
+          {localError}
+        </div>
+      )}
+
+      {/* Form Area */}
+      {tab === 'token' ? (
+        <div className="flex flex-col gap-2.5">
+          <div className="text-[11px] text-slate-400 leading-normal">
+            If you are already logged in to the web portal, copy your session token from your account page to link this extension.
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-medium text-slate-300">Session token</label>
+              <button
+                type="button"
+                onClick={handlePasteClipboard}
+                className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium"
+              >
+                <ClipboardPaste className="w-3 h-3" />
+                <span>Paste clipboard</span>
+              </button>
+            </div>
+            <textarea
+              rows={3}
+              required
+              placeholder="Paste session token..."
+              value={sessionTokenInput}
+              onChange={(e) => setSessionTokenInput(e.target.value)}
+              className="w-full p-2 bg-slate-900 border border-slate-800 rounded-lg font-mono text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors resize-none"
+            />
+          </div>
+
           <button
             type="button"
-            onClick={() => {
-              setTab('signin');
-              setLocalError(null);
-            }}
-            className={`flex-1 py-1.5 text-center font-semibold rounded-lg transition-all ${
-              tab === 'signin'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            disabled={loading || !sessionTokenInput.trim()}
+            onClick={handleTokenLogin}
+            className="w-full py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
           >
-            Sign In
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTab('signup');
-              setLocalError(null);
-            }}
-            className={`flex-1 py-1.5 text-center font-semibold rounded-lg transition-all ${
-              tab === 'signup'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Register
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTab('token');
-              setLocalError(null);
-            }}
-            className={`flex-1 py-1.5 text-center font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${
-              tab === 'token'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Key className="w-3 h-3" />
-            <span>Paste Token</span>
+            {loading ? 'Linking...' : 'Link session'}
           </button>
         </div>
-
-        {/* Local Error Alert */}
-        {localError && (
-          <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs flex items-start gap-2">
-            <span className="text-red-400 font-bold">!</span>
-            <span className="leading-tight">{localError}</span>
-          </div>
-        )}
-
-        {/* Token Link View */}
-        {tab === 'token' ? (
-          <div className="flex flex-col gap-3">
-            <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-200 text-xs flex items-start gap-2 leading-relaxed">
-              <Key className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-              <div>
-                Logged into the Web Dashboard? Copy the <strong>Session Token</strong> at the bottom of the portal and link this extension instantly without password.
-              </div>
-            </div>
-
+      ) : (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2.5">
+          {tab === 'signup' && (
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-medium text-slate-300">Web Session Token</label>
-                <button
-                  type="button"
-                  onClick={handlePasteClipboard}
-                  className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium"
-                >
-                  <ClipboardPaste className="w-3 h-3" />
-                  <span>Paste Clipboard</span>
-                </button>
-              </div>
-              <textarea
-                rows={4}
-                required
-                placeholder="Paste the session token from your web dashboard here (starts with eyJ...)"
-                value={sessionTokenInput}
-                onChange={(e) => setSessionTokenInput(e.target.value)}
-                className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl font-mono text-[11px] text-indigo-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors resize-none"
-              />
-            </div>
-
-            <button
-              type="button"
-              disabled={loading || !sessionTokenInput.trim()}
-              onClick={handleTokenLogin}
-              className="w-full mt-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] disabled:opacity-50"
-            >
-              {loading ? (
-                <span className="animate-pulse">Validating & Linking Session...</span>
-              ) : (
-                <>
-                  <span>Link Extension with Token</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </>
-              )}
-            </button>
-          </div>
-        ) : (
-          /* Normal Auth Form */
-          <form onSubmit={handleSubmit} className="flex flex-col gap-2.5">
-            {tab === 'signup' && (
-              <div>
-                <label className="text-[11px] font-medium text-slate-300 block mb-1">Full Name</label>
-                <div className="relative">
-                  <User className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ada Lovelace"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-                  />
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="text-[11px] font-medium text-slate-300 block mb-1">Email Address</label>
+              <label className="text-[11px] font-medium text-slate-300 block mb-1">Name</label>
               <div className="relative">
-                <Mail className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <User className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
-                  type="email"
+                  type="text"
                   required
-                  placeholder="dev@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                  placeholder="Full name"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
             </div>
+          )}
 
-            {tab !== 'forgot' && (
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-medium text-slate-300">Password</label>
-                  {tab === 'signin' && (
-                    <button
-                      type="button"
-                      onClick={() => setTab('forgot')}
-                      className="text-[10px] text-indigo-400 hover:text-indigo-300"
-                    >
-                      Forgot Password?
-                    </button>
-                  )}
-                </div>
-                <div className="relative">
-                  <Lock className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-9 pr-9 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="text-slate-500 hover:text-slate-300 absolute right-3 top-1/2 -translate-y-1/2"
-                  >
-                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-            )}
+          <div>
+            <label className="text-[11px] font-medium text-slate-300 block mb-1">Email</label>
+            <div className="relative">
+              <Mail className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="email"
+                required
+                placeholder="name@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+              />
+            </div>
+          </div>
 
-            {tab === 'signin' && (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTab('token');
-                    setLocalError(null);
-                  }}
-                  className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium"
-                >
-                  <Key className="w-2.5 h-2.5" />
-                  <span>Have a Web Session Token? Link here ➔</span>
-                </button>
-              </div>
-            )}
+          <div>
+            <label className="text-[11px] font-medium text-slate-300 block mb-1">Password</label>
+            <div className="relative">
+              <Lock className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-9 pr-8 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="text-slate-500 hover:text-slate-300 absolute right-2.5 top-1/2 -translate-y-1/2"
+              >
+                {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] disabled:opacity-50"
-            >
-              {loading ? (
-              <span className="animate-pulse">Authenticating...</span>
-            ) : (
-              <>
-                <span>
-                  {tab === 'signin' && 'Sign In to Extension'}
-                  {tab === 'signup' && 'Create Developer Account'}
-                  {tab === 'forgot' && 'Send Recovery Token'}
-                </span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </>
-            )}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full mt-1 py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            {loading ? 'Signing in...' : tab === 'signin' ? 'Sign in' : 'Create account'}
           </button>
         </form>
-        )}
+      )}
 
-        {/* Web Portal Button */}
-        <div className="pt-2 border-t border-slate-800/80 flex flex-col gap-1.5">
-          <button
-            type="button"
-            onClick={handleOpenWebDashboard}
-            className="w-full py-2.5 px-3 rounded-xl bg-slate-800/90 hover:bg-slate-750 text-slate-200 hover:text-white border border-slate-700/60 text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm hover:border-indigo-500/50 cursor-pointer"
-          >
-            <span>Open Web Portal & Dashboard</span>
-            <ExternalLink className="w-3.5 h-3.5 text-indigo-400" />
-          </button>
-          <p className="text-[10px] text-slate-400 text-center">
-            Sign in to track AI quotas, manage active devices, and sync session tokens.
-          </p>
-        </div>
+      {/* Subtle Link to Web Portal */}
+      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+        <span>Need to manage account?</span>
+        <button
+          type="button"
+          onClick={handleOpenWebDashboard}
+          className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium cursor-pointer"
+        >
+          <span>Open web dashboard</span>
+          <ExternalLink className="w-3 h-3" />
+        </button>
       </div>
     </div>
   );
 };
 
 export default AuthGate;
-

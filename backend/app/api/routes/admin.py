@@ -191,8 +191,8 @@ async def suspend_user(
     if not target:
         raise HTTPException(status_code=404, detail="Target user not found.")
 
-    if target.role in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value) and admin.role != UserRole.SUPER_ADMIN.value:
-        raise HTTPException(status_code=403, detail="Only Super Admins can suspend other administrative accounts.")
+    if target.role == UserRole.ADMIN.value and target.id == admin.id:
+        raise HTTPException(status_code=400, detail="Administrators cannot suspend their own account.")
 
     target.account_status = AccountStatus.SUSPENDED.value
 
@@ -263,7 +263,7 @@ async def update_user_role(
         raise HTTPException(status_code=404, detail="Target user not found.")
 
     prev_role = target.role
-    target.role = payload.role
+    target.role = payload.role.upper()
     await db.commit()
 
     await AuditService.log_admin_action(
@@ -273,11 +273,11 @@ async def update_user_role(
         resource_type="user",
         resource_id=user_id,
         target_user_id=user_id,
-        details={"previous_role": prev_role, "new_role": payload.role, "reason": payload.reason},
+        details={"previous_role": prev_role, "new_role": target.role, "reason": payload.reason},
         request=request,
     )
 
-    return {"status": "success", "user_id": user_id, "previous_role": prev_role, "new_role": payload.role}
+    return {"status": "success", "user_id": user_id, "previous_role": prev_role, "new_role": target.role}
 
 
 @router.post("/users/{user_id}/revoke-sessions")

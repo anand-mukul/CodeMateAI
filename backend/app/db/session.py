@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.db.base import Base, utc_now
 import app.models  # Ensure all models are registered on Base.metadata
-from app.models.subscription import Plan, PromoCode
+from app.models.subscription import Plan, PromoCode, Subscription
 from app.models.enums import BillingInterval, PlanTier
 
 # Detect available PostgreSQL drivers and build active async database URL
@@ -205,103 +205,8 @@ async def init_db() -> None:
                 price=6100,  # ₹61 in paise
                 currency="INR",
                 billing_interval=BillingInterval.WEEK.value,
-                device_limit=2,
-                concurrent_session_limit=2,
-                ai_usage_limit=100,
-                feature_entitlements=json.dumps([
-                    "analyze",
-                    "explain",
-                    "generate",
-                    "optimize",
-                    "fix",
-                    "autopilot",
-                    "one_click_insert",
-                    "byok",
-                    "project_intelligence",
-                ]),
-                active=True,
-            ),
-            # Aliases for backward compatibility (inactive in public listing, resolved via get_plan_by_id)
-            Plan(
-                id="free",
-                name="Free Tier",
-                description="Free models only • Manual copy-paste, 5 requests/day on 1 device",
-                price=0,
-                currency="INR",
-                billing_interval=BillingInterval.LIFETIME.value,
-                device_limit=1,
-                concurrent_session_limit=1,
-                ai_usage_limit=5,
-                feature_entitlements=json.dumps(["analyze", "explain", "generate"]),
-                active=True,
-            ),
-            Plan(
-                id="student",
-                name="Student Developer Pass",
-                description="Student Pass • 50 requests/day on 2 devices",
-                price=14900,  # ₹149 in paise
-                currency="INR",
-                billing_interval=BillingInterval.MONTH.value,
-                device_limit=2,
-                concurrent_session_limit=2,
-                ai_usage_limit=50,
-                feature_entitlements=json.dumps(["analyze", "explain", "generate", "optimize", "fix"]),
-                active=True,
-            ),
-            Plan(
-                id="pro",
-                name="Pro Coder Pass",
-                description="Pro Pass • Direct insertion, practice assistant & BYOK integration",
-                price=29900,  # ₹299 in paise
-                currency="INR",
-                billing_interval=BillingInterval.MONTH.value,
                 device_limit=3,
                 concurrent_session_limit=2,
-                ai_usage_limit=200,
-                feature_entitlements=json.dumps([
-                    "analyze", "explain", "generate", "optimize", "fix",
-                    "autopilot", "one_click_insert", "byok", "project_intelligence"
-                ]),
-                active=True,
-            ),
-            Plan(
-                id="premium",
-                name="Premium Coder Pass",
-                description="Unlimited AI requests on 5 devices",
-                price=49900,  # ₹499 in paise
-                currency="INR",
-                billing_interval=BillingInterval.MONTH.value,
-                device_limit=5,
-                concurrent_session_limit=5,
-                ai_usage_limit=999999,
-                feature_entitlements=json.dumps([
-                    "analyze", "explain", "generate", "optimize", "fix",
-                    "autopilot", "one_click_insert", "byok", "project_intelligence"
-                ]),
-                active=True,
-            ),
-            Plan(
-                id="core_daily",
-                name="Core Pass",
-                description="Daily Pass • Standard AI models, 25 requests/day on 1 device",
-                price=2100,
-                currency="INR",
-                billing_interval=BillingInterval.DAY.value,
-                device_limit=1,
-                concurrent_session_limit=1,
-                ai_usage_limit=25,
-                feature_entitlements=json.dumps(["analyze", "explain", "generate", "optimize", "fix"]),
-                active=False,
-            ),
-            Plan(
-                id="autopilot_weekly",
-                name="AutoPilot Pass",
-                description="Weekly Pass • Direct insertion, practice assistant & BYOK integration",
-                price=6100,
-                currency="INR",
-                billing_interval=BillingInterval.WEEK.value,
-                device_limit=2,
-                concurrent_session_limit=2,
                 ai_usage_limit=100,
                 feature_entitlements=json.dumps([
                     "analyze",
@@ -314,7 +219,7 @@ async def init_db() -> None:
                     "byok",
                     "project_intelligence",
                 ]),
-                active=False,
+                active=True,
             ),
         ]
 
@@ -336,20 +241,15 @@ async def init_db() -> None:
                 existing.feature_entitlements = plan.feature_entitlements
                 existing.active = plan.active
 
-        # Ensure canonical tiers and compatibility tiers are active
-        active_plan_ids = [
-            "FREE", "PLAN_CORE_PASS", "PLAN_AUTOPILOT_PASS",
-            "free", "student", "pro", "premium",
-        ]
+        # Ensure strictly the 3 canonical tiers exist and are active
+        canonical_plan_ids = ["FREE", "PLAN_CORE_PASS", "PLAN_AUTOPILOT_PASS"]
         await session.execute(
-            update(Plan)
-            .where(Plan.id.in_(active_plan_ids))
-            .values(active=True)
+            delete(Plan).where(~Plan.id.in_(canonical_plan_ids))
         )
         await session.execute(
             update(Plan)
-            .where(~Plan.id.in_(active_plan_ids))
-            .values(active=False)
+            .where(Plan.id.in_(canonical_plan_ids))
+            .values(active=True)
         )
 
         # Clean up legacy predefined coupons so coupon management is 100% admin-managed

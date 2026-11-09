@@ -43,7 +43,7 @@ export class CodeMateAPIError extends Error {
 export class CodeMateApiClient {
   private static baseUrl: string = (
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) ||
-    'https://codemate-backend-wsi1.onrender.com'
+    'http://localhost:8000'
   ).replace(/\/$/, '');
 
   private static defaultTimeoutMs = 30000;
@@ -109,13 +109,25 @@ export class CodeMateApiClient {
         }
 
         const settings = await StorageService.getSettings();
-        const activeProvider = providerOverride || settings.activeProvider;
-        headers['X-CodeMate-Provider'] = activeProvider;
-        if (settings.selectedModel) {
-          headers['X-CodeMate-Model'] = settings.selectedModel;
-        }
-        if (settings.aiMode === 'byok' && settings.byokVault[activeProvider.toLowerCase()]) {
-          headers['X-CodeMate-API-Key'] = settings.byokVault[activeProvider.toLowerCase()];
+        if (settings.aiMode === 'managed') {
+          // In Managed AI mode, admin controls active provider & model.
+          // Do not send client overrides so backend uses its active AI_PROVIDER.
+        } else if (settings.aiMode === 'byok') {
+          const activeProvider = providerOverride || settings.activeProvider;
+          headers['X-CodeMate-Provider'] = activeProvider;
+          if (settings.selectedModel) {
+            headers['X-CodeMate-Model'] = settings.selectedModel;
+          }
+          if (settings.byokVault[activeProvider.toLowerCase()]) {
+            headers['X-CodeMate-API-Key'] = settings.byokVault[activeProvider.toLowerCase()];
+          }
+        } else {
+          // Free mode
+          const activeProvider = providerOverride || settings.activeProvider || 'openrouter';
+          headers['X-CodeMate-Provider'] = activeProvider;
+          if (settings.selectedModel) {
+            headers['X-CodeMate-Model'] = settings.selectedModel;
+          }
         }
 
         const config: RequestInit = {

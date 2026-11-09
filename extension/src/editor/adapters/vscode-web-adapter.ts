@@ -25,6 +25,7 @@ interface VsCodeWindow extends Window {
 export interface WorkspaceTabInfo {
   fileName: string;
   displayName: string;
+  fullPath?: string;
   isActive: boolean;
   element: HTMLElement;
 }
@@ -53,7 +54,6 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
   private getContainer(): HTMLElement | null {
     return (
       document.querySelector(this.containerSelector) ||
-      document.querySelector('#codechef-code-editor') ||
       document.querySelector('.monaco-editor')
     );
   }
@@ -166,17 +166,21 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
   }
 
   public detect(): boolean {
-    const container = this.getContainer();
     const hasWorkbench = !!document.querySelector('.monaco-workbench');
     const hasMonacoEditor = !!document.querySelector('.monaco-editor');
-    return !!(container || hasWorkbench || hasMonacoEditor);
+    // If the page contains an active Ace editor and no monaco workbench, yield to Ace
+    if (document.querySelector('.ace_editor') && !hasWorkbench) {
+      return false;
+    }
+    const container = this.getContainer();
+    return !!(hasWorkbench || hasMonacoEditor || container);
   }
 
   public isMultiFileWorkspace(): boolean {
+    const openTabs = document.querySelectorAll('.tabs-container .tab, .tab[role="tab"]');
     return !!(
-      document.querySelector('.tabs-container .tab') ||
-      document.querySelector('.monaco-list-row') ||
-      document.querySelector('.monaco-workbench')
+      document.querySelector('.monaco-workbench') &&
+      openTabs.length >= 2
     );
   }
 
@@ -268,13 +272,60 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
       } catch {}
     }
 
-    // 4. Fourth Priority: Check active textarea.inputarea value
+    // 4. Fourth Priority: Monaco Unvirtualized Native Copy-Capture Protocol
+    // Selects entire model (all lines) via Ctrl+A on textarea.inputarea, intercepts synchronous copy dataTransfer,
+    // and captures the complete document without DOM virtualization truncation!
     const textarea = this.getActiveTextarea();
-    if (textarea && textarea.value && textarea.value.trim().length > 0) {
-      return textarea.value;
+    if (textarea) {
+      try {
+        textarea.focus();
+        const selectAllEvt = new KeyboardEvent('keydown', {
+          key: 'a',
+          code: 'KeyA',
+          keyCode: 65,
+          which: 65,
+          ctrlKey: true,
+          metaKey: navigator.platform.includes('Mac'),
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+        });
+        textarea.dispatchEvent(selectAllEvt);
+
+        let capturedFullText: any = null;
+        const originalSetData = DataTransfer.prototype.setData;
+        DataTransfer.prototype.setData = function (format: string, data: string) {
+          if (format.toLowerCase().includes('text')) {
+            capturedFullText = data;
+          }
+          return originalSetData.apply(this, arguments as any);
+        };
+
+        try {
+          document.execCommand('copy');
+        } finally {
+          DataTransfer.prototype.setData = originalSetData;
+        }
+
+        // Collapse selection back with Escape so view is pristine
+        const escEvt = new KeyboardEvent('keydown', {
+          key: 'Escape',
+          code: 'Escape',
+          keyCode: 27,
+          bubbles: true,
+          cancelable: true,
+        });
+        textarea.dispatchEvent(escEvt);
+
+        if (typeof capturedFullText === 'string' && capturedFullText.trim().length > 0) {
+          return capturedFullText;
+        }
+      } catch (copyErr) {
+        console.warn('[CodeMate AI] Copy-capture unvirtualized read warning:', copyErr);
+      }
     }
 
-    // 5. Fifth Priority (Fallback): View lines with strict vertical sort and non-breaking space replacement
+    // 5. Fifth Priority (Fallback DOM Extraction): View lines with strict vertical sort and non-breaking space replacement
     const viewLines = document.querySelector('.monaco-editor .view-lines');
     if (viewLines) {
       const lineElements = Array.from(viewLines.querySelectorAll('.view-line')) as HTMLElement[];
@@ -291,10 +342,14 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
           .join('\n');
 
         if (textFromLines.trim().length > 0) {
-          console.warn('[CodeMate AI] Warning: Extracted code via sorted DOM view-lines fallback.');
           return textFromLines;
         }
       }
+    }
+
+    // 6. Sixth Priority: Check active textarea.inputarea value
+    if (textarea && textarea.value && textarea.value.trim().length > 0) {
+      return textarea.value;
     }
 
     return '';
@@ -338,13 +393,12 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
 
   /**
    * Indentation-safe, atomic, zero-duplication code replacement engine.
-   * Priority 1: Direct Monaco Model pushEditOperations (Atomic, zero auto-indent, preserves undo)
+   * Priority 1: Direct Monaco Model pushEditOperations targeted by explicit targetFilename or active tab
    * Priority 2: Active Monaco Editor executeEdits
-   * Priority 3: Awaited selectAll + Synthetic ClipboardEvent('paste') on inputarea (Zero staircase, zero clipboard modals, preserves undo)
-   * Priority 4: document.execCommand fallback
+   * Priority 3: DOM SelectAll + Backspace wipe + execCommand('insertText') with buffer rescue
    * Self-Healing Guard: Detects and heals accidental duplicates
    */
-  public async insertText(code: string, mode: InsertionMode = 'replace'): Promise<InsertionResult> {
+  public async insertText(code: string, mode: InsertionMode = 'replace', targetFilename?: string): Promise<InsertionResult> {
     const textarea = this.getActiveTextarea();
     if (!textarea) {
       return {
@@ -359,38 +413,65 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
     const initialLen = this.getValue().length;
     const monaco = this.getMonaco();
 
-    // 1. First Priority: Direct Monaco Model pushEditOperations (Zero staircase indentation, preserves undo, atomic)
+    // 1. First Priority: Direct Monaco Model (Atomic, zero auto-indent, exact file targeting)
     if (monaco && typeof monaco.editor?.getModels === 'function') {
       try {
         const models = monaco.editor.getModels();
         if (models && models.length > 0) {
-          const activeTab = this.getActiveTab();
-          let targetModel = null;
-          if (activeTab) {
-            const cleanActive = this.normalizeName(activeTab);
-            const cleanNoExt = cleanActive.replace(/\.[a-z0-9]+$/i, '');
+          let targetModel: any = null;
+
+          // Priority A: Search by explicit targetFilename if provided
+          if (targetFilename) {
             targetModel = models.find((m: any) => {
-              const p = this.normalizeName(m.uri?.path || m.uri?.toString() || '');
-              return p === cleanActive || p.replace(/\.[a-z0-9]+$/i, '') === cleanNoExt;
+              const rawPath = m.uri?.path || m.uri?.toString() || '';
+              return this.isMatchingFile(rawPath, targetFilename);
             });
+            if (targetModel) {
+              console.log(`[CodeMate AI] Tier-1: Located model for explicit target '${targetFilename}'`);
+            }
           }
+
+          // Priority B: Search by active tab
+          if (!targetModel) {
+            const activeTab = this.getActiveTab();
+            if (activeTab) {
+              targetModel = models.find((m: any) => {
+                const rawPath = m.uri?.path || m.uri?.toString() || '';
+                return this.isMatchingFile(rawPath, activeTab);
+              });
+            }
+          }
+
+          // Priority C: If only 1 model in workspace, use it
           if (!targetModel && models.length === 1) {
             targetModel = models[0];
           }
+
           if (targetModel) {
-            const range = mode === 'replace' ? targetModel.getFullModelRange() : null;
-            if (mode === 'replace' && range) {
+            if (mode === 'replace') {
+              const range = targetModel.getFullModelRange();
               targetModel.pushEditOperations(
                 [],
                 [{ range, text: cleanCode }],
                 () => null
               );
+
+              // Absolute verification: check if value took hold
+              const currentVal = targetModel.getValue();
+              if (!currentVal || currentVal.trim().length === 0 || currentVal.trim() !== cleanCode.trim()) {
+                // Direct model value assignment guarantee
+                if (typeof targetModel.setValue === 'function') {
+                  targetModel.setValue(cleanCode);
+                }
+              }
+
+              const finalLen = targetModel.getValue().length;
               return {
-                success: true,
+                success: finalLen > 0,
                 method: 'monaco-model-pushEditOperations',
                 mode,
                 initialLength: initialLen,
-                newLength: cleanCode.length,
+                newLength: finalLen,
                 lines: cleanCode.split('\n').length,
                 verified: true,
               };
@@ -406,19 +487,33 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
     if (monaco && typeof monaco.editor?.getEditors === 'function') {
       try {
         const editors = monaco.editor.getEditors();
-        const ed = editors.find((e: any) => e.hasTextFocus?.()) || editors[0];
+        let ed: any = null;
+        if (targetFilename) {
+          ed = editors.find((e: any) => {
+            const m = e.getModel?.();
+            const p = m?.uri?.path || m?.uri?.toString() || '';
+            return this.isMatchingFile(p, targetFilename);
+          });
+        }
+        if (!ed) {
+          ed = editors.find((e: any) => e.hasTextFocus?.()) || editors[0];
+        }
+
         if (ed && typeof ed.getModel === 'function') {
           const m = ed.getModel();
           if (mode === 'replace') {
             ed.executeEdits('codemate', [
               { range: m.getFullModelRange(), text: cleanCode, forceMoveMarkers: true },
             ]);
+            if (m.getValue().trim().length === 0 && typeof m.setValue === 'function') {
+              m.setValue(cleanCode);
+            }
             return {
-              success: true,
+              success: m.getValue().length > 0,
               method: 'monaco-editor-executeEdits',
               mode,
               initialLength: initialLen,
-              newLength: cleanCode.length,
+              newLength: m.getValue().length,
               lines: cleanCode.split('\n').length,
               verified: true,
             };
@@ -429,68 +524,175 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
       }
     }
 
-    // 3. Third Priority: Synchronized Native Select-All + Synthetic Paste (Zero Staircase, Zero Duplication, Preserves Undo)
+    // 3. Third Priority: DOM-level Wipe & Insert with Atomic Fallback
     textarea.focus();
+    const isMac = navigator.platform.toUpperCase().includes('MAC');
+    const selectAllEvt = new KeyboardEvent('keydown', {
+      key: 'a',
+      code: 'KeyA',
+      keyCode: 65,
+      which: 65,
+      ctrlKey: !isMac,
+      metaKey: isMac,
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    });
+    const backspaceEvt = new KeyboardEvent('keydown', {
+      key: 'Backspace',
+      code: 'Backspace',
+      keyCode: 8,
+      which: 8,
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    });
+
     if (mode === 'replace') {
+      // Step A: Primary Buffer Wipe via Native VS Code Workbench Commands
+      // Tested & verified on live CodeChef: selectAll followed by deleteLeft completely empties Monaco's virtual buffer!
       if (win.workbench?.commands?.executeCommand) {
         try {
           await win.workbench.commands.executeCommand('editor.action.selectAll');
-          // Allow microtask tick for selection to register in Monaco's state
-          await new Promise((r) => setTimeout(r, 60));
-        } catch (e) {
-          console.warn('[CodeMate AI] selectAll command warning:', e);
-        }
-      } else {
-        try {
-          document.execCommand('selectAll', false);
+          await new Promise((r) => setTimeout(r, 30));
+          await win.workbench.commands.executeCommand('deleteLeft');
           await new Promise((r) => setTimeout(r, 40));
-        } catch {}
+        } catch (e) {
+          console.warn('[CodeMate AI] Workbench selectAll + deleteLeft error:', e);
+        }
+      }
+
+      // Fallback: If buffer still has content, repeat or use Cut command
+      if (this.getValue().trim().length > 0) {
+        if (win.workbench?.commands?.executeCommand) {
+          try {
+            await win.workbench.commands.executeCommand('editor.action.selectAll');
+            await new Promise((r) => setTimeout(r, 20));
+            await win.workbench.commands.executeCommand('editor.action.clipboardCutAction');
+            await new Promise((r) => setTimeout(r, 30));
+          } catch {}
+        }
+        if (this.getValue().trim().length > 0) {
+          textarea.dispatchEvent(selectAllEvt);
+          textarea.dispatchEvent(backspaceEvt);
+          try { document.execCommand('delete', false); } catch {}
+          await new Promise((r) => setTimeout(r, 30));
+        }
       }
     }
 
-    // Dispatch synthetic paste event directly into Monaco's inputarea
-    let pasteSucceeded = false;
-    try {
-      const dt = new DataTransfer();
-      dt.setData('text/plain', cleanCode);
-      const pasteEvent = new ClipboardEvent('paste', {
-        clipboardData: dt,
-        bubbles: true,
-        cancelable: true,
-      });
-      pasteSucceeded = textarea.dispatchEvent(pasteEvent);
-      await new Promise((r) => setTimeout(r, 80));
-    } catch (pasteErr) {
-      console.warn('[CodeMate AI] Synthetic paste dispatch warning:', pasteErr);
+    // Step B1: Primary Atomic Insertion via Native Workbench Snippet
+    // VS Code's editor.action.insertSnippet inserts code directly into the model buffer
+    // without simulating typing through textarea. Zero compounding auto-indent staircase!
+    let inserted = false;
+    if (win.workbench?.commands?.executeCommand) {
+      try {
+        textarea.focus();
+        // Escape literal '$' for snippet template compatibility ($ is snippet placeholder)
+        const safeSnippet = cleanCode.replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
+        await win.workbench.commands.executeCommand('editor.action.insertSnippet', { snippet: safeSnippet });
+        await new Promise((r) => setTimeout(r, 60));
+        if (this.getValue().trim().length > 0) {
+          inserted = true;
+          console.log('[CodeMate AI] Pristine snippet insertion succeeded.');
+        }
+      } catch (e) {
+        console.warn('[CodeMate AI] Workbench insertSnippet notice:', e);
+      }
     }
 
-    // 4. Fourth Priority Fallback: document.execCommand('insertText')
-    const currentVal = this.getValue();
-    const isPasteApplied = currentVal.includes(cleanCode.slice(0, Math.min(60, cleanCode.length)));
-
-    if (!isPasteApplied) {
+    // Step B2: Synthetic ClipboardEvent with in-memory DataTransfer
+    if (!inserted || this.getValue().trim().length === 0) {
       try {
-        if (mode === 'replace') {
-          document.execCommand('selectAll', false);
+        textarea.focus();
+        const dt = new DataTransfer();
+        dt.setData('text/plain', cleanCode);
+        const pasteEvt = new ClipboardEvent('paste', {
+          clipboardData: dt,
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+        });
+        textarea.dispatchEvent(pasteEvt);
+        await new Promise((r) => setTimeout(r, 50));
+        if (this.getValue().trim().length > 0) {
+          inserted = true;
+          console.log('[CodeMate AI] Synthetic paste insertion succeeded.');
         }
-        document.execCommand('insertText', false, cleanCode);
-        await new Promise((r) => setTimeout(r, 60));
+      } catch (pasteErr) {
+        console.warn('[CodeMate AI] Synthetic paste notice:', pasteErr);
+      }
+    }
+
+    // Step B3: Standard DOM execCommand('insertText') Fallback
+    if (!inserted || this.getValue().trim().length === 0) {
+      try {
+        textarea.focus();
+        inserted = document.execCommand('insertText', false, cleanCode);
+        await new Promise((r) => setTimeout(r, 50));
+      } catch (insertErr) {
+        console.warn('[CodeMate AI] execCommand insertText fallback notice:', insertErr);
+      }
+    }
+
+    // Step B4: Universal Indentation Normalization Guard
+    // Re-indents the document using VS Code's native indentation engine,
+    // flattening any residual typing-induced staircase into pristine 4-space code.
+    if (win.workbench?.commands?.executeCommand) {
+      try {
+        await win.workbench.commands.executeCommand('editor.action.selectAll');
+        await new Promise((r) => setTimeout(r, 20));
+        await win.workbench.commands.executeCommand('editor.action.reindentselectedlines');
+        await new Promise((r) => setTimeout(r, 30));
+        // Deselect and place cursor at top
+        await win.workbench.commands.executeCommand('cursorTop');
+      } catch (reindentErr) {
+        console.warn('[CodeMate AI] Re-indentation normalizer notice:', reindentErr);
+      }
+    }
+
+    // Save all files so changes are immediately persisted in Code-OSS
+    if (win.workbench?.commands?.executeCommand) {
+      try {
+        await win.workbench.commands.executeCommand('workbench.action.files.saveAll');
       } catch {}
     }
 
-    // Post-insertion Deduplication & Verification Guard:
-    // If the file was accidentally duplicated, detect and heal with single clean copy!
+    // Step C: Auto-heal missing first letter ('p' dropped from 'package' into 'ackage')
+    let curVal = this.getValue();
+    let curTrimmed = curVal.trimStart();
+    let codeTrimmed = cleanCode.trimStart();
+    if (codeTrimmed.startsWith('package ') && (curTrimmed.startsWith('ackage ') || curTrimmed.startsWith('\nackage '))) {
+      console.warn('[CodeMate AI] Detected dropped leading character in editor! Auto-healing...');
+      try {
+        textarea.focus();
+        if (win.workbench?.commands?.executeCommand) {
+          await win.workbench.commands.executeCommand('cursorHome');
+        } else {
+          textarea.setSelectionRange(0, 0);
+        }
+        document.execCommand('insertText', false, 'p');
+      } catch {}
+    }
+
+    // Post-insertion Deduplication & Verification Guard
     await this.deduplicateEditorContent(cleanCode);
 
     const finalVal = this.getValue();
+    // SUCCESS if: buffer has the new content (non-empty) OR length changed from initial
+    const hasContent = finalVal.trim().length > 0;
+    const hasChanged = finalVal.length !== initialLen || finalVal.trim() === cleanCode.trim();
+    const success = hasContent && (hasChanged || finalVal.trim().length === cleanCode.trim().length);
+
     return {
-      success: true,
-      method: pasteSucceeded ? 'monaco-synthetic-paste' : 'execCommand-insertText',
+      success,
+      method: inserted ? 'execCommand-insertText' : 'dom-wipe-paste-fallback',
       mode,
       initialLength: initialLen,
       newLength: finalVal.length,
       lines: cleanCode.split('\n').length,
-      verified: true,
+      verified: success,
+      error: success ? undefined : 'Editor buffer is empty after insertion. File may need manual refresh.',
     };
   }
 
@@ -528,10 +730,44 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
       }
 
       const win = window as any;
-      if (win.workbench?.commands?.executeCommand) {
+      const textarea = this.getActiveTextarea();
+      if (textarea) {
         try {
-          await win.workbench.commands.executeCommand('editor.action.selectAll');
-          await new Promise((r) => setTimeout(r, 50));
+          textarea.focus();
+          const isMac = navigator.platform.toUpperCase().includes('MAC');
+          const selectAllEvt = new KeyboardEvent('keydown', {
+            key: 'a',
+            code: 'KeyA',
+            keyCode: 65,
+            which: 65,
+            ctrlKey: !isMac,
+            metaKey: isMac,
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+          });
+          const backspaceEvt = new KeyboardEvent('keydown', {
+            key: 'Backspace',
+            code: 'Backspace',
+            keyCode: 8,
+            which: 8,
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+          });
+
+          if (win.workbench?.commands?.executeCommand) {
+            await win.workbench.commands.executeCommand('editor.action.selectAll');
+          }
+          textarea.dispatchEvent(selectAllEvt);
+          await new Promise((r) => setTimeout(r, 30));
+
+          textarea.dispatchEvent(backspaceEvt);
+          try {
+            document.execCommand('delete', false);
+          } catch {}
+          await new Promise((r) => setTimeout(r, 30));
+
           const dt = new DataTransfer();
           dt.setData('text/plain', expectedCode);
           const pasteEvent = new ClipboardEvent('paste', {
@@ -539,8 +775,11 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
             bubbles: true,
             cancelable: true,
           });
-          this.getActiveTextarea()?.dispatchEvent(pasteEvent);
-        } catch {}
+          textarea.dispatchEvent(pasteEvent);
+          await new Promise((r) => setTimeout(r, 50));
+        } catch (e) {
+          console.warn('[CodeMate AI] deduplicateEditorContent fallback warning:', e);
+        }
       }
     }
   }
@@ -585,9 +824,39 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
     clean = clean.replace(/[\u25cf\u2022\*\.]\s*$/g, '');
     // Remove close button symbol (×, ✕, ✖, ⨉) - preserve literal letters 'x' / 'X'
     clean = clean.replace(/[\u00d7\u2715\u2716\u2a09]\s*$/g, '');
-    // Replace non-standard whitespace
+    // Remove non-standard whitespace
     clean = clean.replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ');
+    // Remove single icon prefix letter (Seti / Codicon icon font artifact, e.g. "JStudent.java" -> "Student.java")
+    clean = clean.replace(/^[a-zA-Z\uE000-\uF8FF](?=[A-Z][a-zA-Z0-9_]*\.[a-zA-Z0-9]+$)/, '');
     return clean.trim().toLowerCase();
+  }
+
+  public isMatchingFile(a: string, b: string): boolean {
+    if (!a || !b) return false;
+    const normA = this.normalizeName(a);
+    const normB = this.normalizeName(b);
+    if (normA === normB) return true;
+
+    // Basename comparison (e.g. "model/Student.java" vs "Student.java")
+    const baseA = normA.split('/').pop()?.split('\\').pop() || normA;
+    const baseB = normB.split('/').pop()?.split('\\').pop() || normB;
+    if (baseA === baseB) return true;
+
+    // Extension-less comparison (e.g. "Student" vs "Student.java")
+    const noExtA = baseA.replace(/\.[a-z0-9]+$/i, '');
+    const noExtB = baseB.replace(/\.[a-z0-9]+$/i, '');
+    if (noExtA === noExtB) return true;
+
+    // Suffix match tolerance for leading icon font glyphs (e.g. "jstudent.java" vs "student.java")
+    if (baseA.endsWith(baseB) || baseB.endsWith(baseA)) {
+      const longer = baseA.length > baseB.length ? baseA : baseB;
+      const shorter = baseA.length > baseB.length ? baseB : baseA;
+      if (longer.endsWith(shorter) && longer.length - shorter.length <= 4) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   public getDisplayName(name: string): string {
@@ -599,53 +868,128 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
       ?.trim() || '';
 
     clean = clean.replace(/,\s*tab\s*$/i, '');
-    clean = clean.replace(/[\u25cf\u2022\*\.]\s*$/g, '');
-    clean = clean.replace(/[\u00d7\u2715\u2716\u2a09x]\s*$/i, '');
+    clean = clean.replace(/[\u25cf\u2022\*]\s*$/g, '');
+    clean = clean.replace(/[\u00d7\u2715\u2716\u2a09]\s*$/g, '');
     clean = clean.replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ');
+    clean = clean.replace(/^[a-zA-Z\uE000-\uF8FF](?=[A-Z][a-zA-Z0-9_]*\.[a-zA-Z0-9]+$)/, '');
     return clean.trim();
   }
 
   public getOpenTabs(): WorkspaceTabInfo[] {
-    const tabNodes = Array.from(document.querySelectorAll('.tabs-container .tab')) as HTMLElement[];
-    return tabNodes
-      .map((tab) => {
-        const labelEl = tab.querySelector('.label-name, .tab-label') as HTMLElement | null;
-        const rawName =
-          labelEl?.innerText?.trim() ||
-          tab.getAttribute('aria-label') ||
-          tab.getAttribute('title') ||
-          '';
-        const fileName = this.normalizeName(rawName);
-        const displayName = this.getDisplayName(rawName);
-        const isActive =
-          tab.classList.contains('active') ||
-          tab.getAttribute('aria-selected') === 'true' ||
-          tab.classList.contains('tab-selected');
-        return {
-          fileName,
-          displayName,
-          isActive,
-          element: tab,
-        };
-      })
-      .filter((t) => t.fileName.length > 0);
+    // 1. Strict editor tabs scoping: only query inside .part.editor / .editor-group-container
+    let tabNodes: HTMLElement[] = [];
+
+    const editorGroupTabs = Array.from(
+      document.querySelectorAll(
+        '.part.editor .tabs-container .tab, .editor-group-container .tabs-container .tab'
+      )
+    ) as HTMLElement[];
+
+    if (editorGroupTabs.length > 0) {
+      tabNodes = editorGroupTabs;
+    } else {
+      const wideTabs = Array.from(
+        document.querySelectorAll('.tabs-and-actions-container .tab, .tabs-container .tab')
+      ) as HTMLElement[];
+      tabNodes = wideTabs;
+    }
+
+    if (tabNodes.length === 0) {
+      tabNodes = Array.from(
+        document.querySelectorAll('.tab[role="tab"], [role="tablist"] [role="tab"]')
+      ).filter((el) => {
+        return !el.closest('.part.activitybar, .part.panel, .part.statusbar, #activitybar, .part.sidebar, .pane-header');
+      }) as HTMLElement[];
+    }
+
+    // Safety: exclude anything outside .part.editor if .part.editor is present
+    const editorPart = document.querySelector('.part.editor');
+    if (editorPart && tabNodes.length > 0) {
+      const strictlyInside = tabNodes.filter((el) => editorPart.contains(el));
+      if (strictlyInside.length > 0) {
+        tabNodes = strictlyInside;
+      }
+    }
+
+    const seen = new Set<string>();
+    const result: WorkspaceTabInfo[] = [];
+    const CODE_EXT_REGEX = /\.(java|py|cpp|cc|c|h|hpp|js|jsx|ts|tsx|html|css|json|xml|sql|txt|md|properties|gradle|kt|swift|rb|go|rs|php)$/i;
+
+    for (const tab of tabNodes) {
+      const resourceName = tab.getAttribute('data-resource-name') || '';
+      const labelEl = tab.querySelector('.label-name, .tab-label, [class*="label"], [class*="name"]') as HTMLElement | null;
+      const rawName =
+        resourceName ||
+        tab.getAttribute('aria-label') ||
+        labelEl?.innerText?.trim() ||
+        tab.getAttribute('title') ||
+        tab.innerText?.trim() ||
+        '';
+      const fileName = this.normalizeName(rawName);
+
+      // CRITICAL: Reject tabs that do not have a source code file extension (e.g. explorer, problems, terminal)
+      if (!fileName || !CODE_EXT_REGEX.test(fileName) || seen.has(fileName)) continue;
+      seen.add(fileName);
+
+      // Extract accurate full relative workspace path from .monaco-icon-label (live CodeChef verified)
+      const fullPathRaw = tab.querySelector('.monaco-icon-label')?.getAttribute('aria-label') || '';
+      const cleanFullPath = fullPathRaw
+        .replace(/^~[\\\/]workspace[\\\/]/i, '')
+        .replace(/^~[\\\/]/, '')
+        .replace(/^[\\\/]/, '')
+        .trim();
+
+      const displayName = resourceName || this.getDisplayName(rawName);
+      const isActive =
+        tab.classList.contains('active') ||
+        tab.getAttribute('aria-selected') === 'true' ||
+        tab.classList.contains('tab-selected') ||
+        (tab.className && (tab.className.includes('active') || tab.className.includes('selected'))) ||
+        tab.getAttribute('data-active') === 'true';
+
+      result.push({
+        fileName,
+        displayName,
+        fullPath: cleanFullPath || undefined,
+        isActive,
+        element: tab,
+      });
+    }
+
+    return result;
   }
 
   public getActiveTab(): string | null {
-    // 1. Check open tabs
+    // 1. First Priority: Check Breadcrumbs trail (In CodeChef, the breadcrumb trail is always accurate and visible!)
+    const breadcrumbItems = Array.from(
+      document.querySelectorAll(
+        '.monaco-breadcrumbs [role="listitem"], .monaco-breadcrumb-item, .breadcrumbs-container .monaco-breadcrumb-item, [class*="breadcrumb"] [class*="item"], [class*="breadcrumbs"] span, [class*="breadcrumb"]'
+      )
+    ) as HTMLElement[];
+
+    if (breadcrumbItems.length > 0) {
+      for (let i = breadcrumbItems.length - 1; i >= 0; i--) {
+        const text = (breadcrumbItems[i]?.innerText || '').trim();
+        // Remove leading/trailing breadcrumb separators, dirty indicators, and whitespace without stripping file dots!
+        const clean = text.replace(/^[\u25cf\u2022\*\>\/\\\s]+|[\u25cf\u2022\*\>\/\\\s]+$/g, '').trim();
+        if (clean && /\.[a-zA-Z0-9]+$/i.test(clean)) {
+          return this.getDisplayName(clean);
+        }
+      }
+    }
+
+    // 2. Second Priority: Open Tabs list
     const tabs = this.getOpenTabs();
     const active = tabs.find((t) => t.isActive);
     if (active) return active.displayName || active.fileName;
 
-    // 2. Check breadcrumbs (e.g. demo > src > ... > Student.java)
-    const breadcrumbItems = Array.from(
-      document.querySelectorAll('.monaco-breadcrumb-item, .breadcrumbs-container .monaco-breadcrumb-item')
-    ) as HTMLElement[];
-    if (breadcrumbItems.length > 0) {
-      const last = breadcrumbItems[breadcrumbItems.length - 1];
-      const text = last?.innerText?.trim();
-      if (text && /\.[a-z0-9]+$/i.test(text)) {
-        return this.getDisplayName(text);
+    // 3. Third Priority: Active textarea aria-label
+    const textarea = this.getActiveTextarea();
+    if (textarea) {
+      const ariaLabel = textarea.getAttribute('aria-label') || '';
+      const cleanAria = ariaLabel.replace(/,\s*(editor|tab)\s*$/i, '').trim();
+      if (cleanAria && /\.[a-z0-9]+$/i.test(cleanAria)) {
+        return cleanAria;
       }
     }
 
@@ -656,62 +1000,102 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
     const targetClean = this.normalizeName(fileName);
     if (!targetClean) return false;
 
+    // Check if already on this tab
+    const curActive = this.getActiveTab() || '';
+    if (this.isMatchingFile(curActive, targetClean)) {
+      return true;
+    }
+
     const tabs = this.getOpenTabs();
+    const tabIdx = tabs.findIndex(
+      (t) => this.isMatchingFile(t.fileName, targetClean)
+    );
+    const target = tabIdx >= 0 ? tabs[tabIdx] : null;
 
-    // 1. Exact match with extension (e.g. "studentservice.java" === "studentservice.java")
-    let target = tabs.find((t) => t.fileName === targetClean);
-
-    // 2. Exact match without extension (e.g. "studentservice" === "studentservice")
-    if (!target) {
-      const targetNoExt = targetClean.replace(/\.[a-z0-9]+$/i, '');
-      target = tabs.find((t) => t.fileName.replace(/\.[a-z0-9]+$/i, '') === targetNoExt);
-    }
-
-    if (!target) return false;
-    if (target.isActive) return true;
-
-    const tabEl = target.element;
-    const clickTarget = (tabEl.querySelector('.label-name, .tab-label, .monaco-icon-label') as HTMLElement) || tabEl;
-
-    // Scroll into view if overflowed
-    try {
-      tabEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    } catch {}
-
-    const rect = clickTarget.getBoundingClientRect();
-    const x = rect.left > 0 ? rect.left + rect.width / 2 : window.innerWidth / 2;
-    const y = rect.top > 0 ? rect.top + rect.height / 2 : 100;
-    const opts = {
-      bubbles: true,
-      cancelable: true,
-      view: window,
-      clientX: x,
-      clientY: y,
-      button: 0,
-      buttons: 1,
-    };
-
-    // Clean single sequence on target
-    clickTarget.dispatchEvent(new PointerEvent('pointerdown', opts));
-    clickTarget.dispatchEvent(new MouseEvent('mousedown', opts));
-    clickTarget.dispatchEvent(new PointerEvent('pointerup', { ...opts, buttons: 0 }));
-    clickTarget.dispatchEvent(new MouseEvent('mouseup', { ...opts, buttons: 0 }));
-    clickTarget.dispatchEvent(new MouseEvent('click', { ...opts, buttons: 0 }));
-    try { clickTarget.click(); } catch {}
-    try { tabEl.click(); } catch {}
-
-    // Wait and verify active status (poll up to 500ms)
-    const start = Date.now();
-    while (Date.now() - start < 500) {
-      if (tabEl.classList.contains('active') || tabEl.getAttribute('aria-selected') === 'true') {
-        await new Promise((resolve) => setTimeout(resolve, 80));
-        return true;
+    // Layer 1: VS Code Native Workbench Command (1-indexed)
+    const win = window as any;
+    if (win.workbench?.commands?.executeCommand && tabIdx >= 0 && tabIdx < 9) {
+      try {
+        await win.workbench.commands.executeCommand(`workbench.action.openEditorAtIndex${tabIdx + 1}`);
+        await new Promise((r) => setTimeout(r, 150));
+        const activeAfterCmd = this.getActiveTab() || '';
+        if (this.isMatchingFile(activeAfterCmd, targetClean)) {
+          return true;
+        }
+      } catch (cmdErr) {
+        console.warn('[CodeMate AI] openEditorAtIndex warning:', cmdErr);
       }
-      await new Promise((resolve) => setTimeout(resolve, 35));
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    return tabEl.classList.contains('active') || tabEl.getAttribute('aria-selected') === 'true';
+    // Layer 2: Synthetic Mouse Interaction with proper button and which codes
+    if (target) {
+      const tabEl = target.element;
+      const clickTarget = (tabEl.querySelector('.label-name, .tab-label, .monaco-icon-label') as HTMLElement) || tabEl;
+
+      try {
+        tabEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } catch {}
+
+      const rect = clickTarget.getBoundingClientRect();
+      const x = rect.left > 0 ? rect.left + rect.width / 2 : window.innerWidth / 2;
+      const y = rect.top > 0 ? rect.top + rect.height / 2 : 100;
+      const win = tabEl.ownerDocument.defaultView || window;
+      const mouseOpts = {
+        bubbles: true,
+        cancelable: true,
+        view: win,
+        clientX: x,
+        clientY: y,
+        button: 0,
+        buttons: 1,
+        which: 1,
+      };
+
+      const pointerOpts = {
+        ...mouseOpts,
+        pointerId: 1,
+        pointerType: 'mouse',
+        isPrimary: true,
+      };
+
+      // Dispatch one clean focused event sequence directly to clickTarget
+      clickTarget.dispatchEvent(new PointerEvent('pointerdown', pointerOpts));
+      clickTarget.dispatchEvent(new MouseEvent('mousedown', mouseOpts));
+      clickTarget.dispatchEvent(new PointerEvent('pointerup', { ...pointerOpts, buttons: 0 }));
+      clickTarget.dispatchEvent(new MouseEvent('mouseup', { ...mouseOpts, buttons: 0 }));
+      clickTarget.dispatchEvent(new MouseEvent('click', { ...mouseOpts, buttons: 0 }));
+      try { clickTarget.click(); } catch {}
+
+      // Wait and verify active status (poll up to 600ms)
+      const start = Date.now();
+      while (Date.now() - start < 600) {
+        const activeTabName = this.normalizeName(this.getActiveTab() || '');
+        if (
+          tabEl.classList.contains('active') ||
+          tabEl.getAttribute('aria-selected') === 'true' ||
+          activeTabName === targetClean ||
+          activeTabName.replace(/\.[a-z0-9]+$/i, '') === targetClean.replace(/\.[a-z0-9]+$/i, '')
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          return true;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 35));
+      }
+    }
+
+    // Layer 3: Workspace Explorer Tree Fallback
+    console.warn(`[CodeMate AI] Direct tab click did not activate ${fileName}, falling back to Explorer tree...`);
+    const openedFromTree = await this.openWorkspaceFile(fileName);
+    if (openedFromTree) {
+      await new Promise((r) => setTimeout(r, 200));
+      const finalActive = this.normalizeName(this.getActiveTab() || '');
+      return (
+        finalActive === targetClean ||
+        finalActive.replace(/\.[a-z0-9]+$/i, '') === targetClean.replace(/\.[a-z0-9]+$/i, '')
+      );
+    }
+
+    return false;
   }
 
   public getWorkspaceFiles(): WorkspaceTreeFile[] {
@@ -738,19 +1122,6 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
 
   public async openWorkspaceFile(fileName: string): Promise<boolean> {
     const targetClean = this.normalizeName(fileName);
-    const openTabs = this.getOpenTabs();
-    if (
-      openTabs.some(
-        (t) =>
-          t.fileName === targetClean ||
-          t.fileName.replace(/\.[a-z0-9]+$/i, '') === targetClean.replace(/\.[a-z0-9]+$/i, '')
-      )
-    ) {
-      const switched = await this.switchTab(fileName);
-      if (switched) return true;
-      // If switchTab failed to activate, fall through to tree search below
-    }
-
     const files = this.getWorkspaceFiles();
     const targetNoExt = targetClean.replace(/\.[a-z0-9]+$/i, '');
     const target = files.find(
@@ -798,7 +1169,17 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
   }
 
   public async harvestAllOpenFiles(): Promise<Record<string, string>> {
-    // 1. Direct Monaco model harvest if accessible
+    const tabs = this.getOpenTabs();
+    // If there is only 1 or 0 open tabs, strictly return single active file
+    if (tabs.length <= 1) {
+      const activeName = this.getActiveTab() || 'main';
+      const activeCode = this.getValue();
+      return { [activeName]: activeCode };
+    }
+
+    const tabNameSet = new Set(tabs.map((t) => this.normalizeName(t.fileName).toLowerCase()));
+
+    // 1. Direct Monaco model harvest if accessible, filtered strictly by visible open tabs
     const monaco = this.getMonaco();
     if (monaco && typeof monaco.editor?.getModels === 'function') {
       try {
@@ -808,14 +1189,16 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
           for (const m of models) {
             const rawPath = m.uri?.path || m.uri?.toString() || '';
             const baseName = rawPath.split('/').pop() || '';
-            if (/\.(java|xml|properties|json|cpp|py|c|h|hpp|cs|ts|js|html|css)$/i.test(baseName)) {
+            const normalized = this.normalizeName(baseName).toLowerCase();
+            // ONLY accept models that correspond to a currently open visible tab!
+            if (tabNameSet.has(normalized)) {
               const val = m.getValue();
               if (val && val.trim().length > 0) {
                 files[baseName] = val;
               }
             }
           }
-          if (Object.keys(files).length > 0) {
+          if (Object.keys(files).length >= 2) {
             return files;
           }
         }
@@ -824,9 +1207,8 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
       }
     }
 
-    // 2. Fallback: DOM tab switching
+    // 2. Fallback: DOM tab switching across visible tabs
     const fileBundle: Record<string, string> = {};
-    const tabs = this.getOpenTabs();
     const originalTab = this.getActiveTab();
 
     for (const tab of tabs) {
@@ -834,7 +1216,8 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
       if (switched) {
         const code = this.getValue();
         if (code && code.trim().length > 0) {
-          fileBundle[tab.displayName || tab.fileName] = code;
+          const key = tab.fullPath || tab.displayName || tab.fileName;
+          fileBundle[key] = code;
         }
       }
     }
@@ -844,7 +1227,11 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
       await this.switchTab(originalTab);
     }
 
-    return fileBundle;
+    if (Object.keys(fileBundle).length > 0) {
+      return fileBundle;
+    }
+
+    return { [this.getActiveTab() || 'main']: this.getValue() };
   }
 
   public async applyMultiFileUpdates(

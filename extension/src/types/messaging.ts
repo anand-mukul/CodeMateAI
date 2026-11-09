@@ -38,7 +38,7 @@ export type PageStatusResponse = MessageResponse<{
 }>;
 
 export type EditorStatusResponse = MessageResponse<EditorStatus>;
-export type EditorCodeResponse = MessageResponse<{ code: string; lineCount: number; charCount: number }>;
+export type EditorCodeResponse = MessageResponse<{ code: string; lineCount: number; charCount: number; activeTab?: string | null }>;
 export type ProblemInfoResponse = MessageResponse<ProblemContext>;
 export type InsertionResponse = MessageResponse<InsertionResult>;
 export type ClipboardStatusResponse = MessageResponse<ClipboardStatus>;

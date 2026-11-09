@@ -147,7 +147,7 @@ class NotificationService:
       <span style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 6px;">Your Verification Token</span>
       <span style="font-family: 'JetBrains Mono', monospace, Courier; font-size: 18px; font-weight: 700; color: #818cf8; letter-spacing: 0.1em; word-break: break-all;">{token}</span>
       <div style="margin-top: 14px;">
-        <a href="https://codemate-backend-wsi1.onrender.com/api/auth/verify-email?token={token}" style="display: inline-block; padding: 10px 24px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">Verify Email in 1-Click →</a>
+        <a href="{settings.BACKEND_URL}/api/auth/verify-email?token={token}" style="display: inline-block; padding: 10px 24px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">Verify Email in 1-Click →</a>
       </div>
     </div>
 

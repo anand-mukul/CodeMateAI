@@ -103,10 +103,10 @@ export function PricingTable({ currentSub, onSuccess, initialCoupon }: PricingTa
     if (!currentSub || (currentSub.status || "").toUpperCase() !== "ACTIVE") return false;
     const curId = (currentSub.plan_id || "").toUpperCase();
     if (planId === PLAN_CORE_PASS) {
-      return curId === "PLAN_CORE_PASS" || curId === "CORE_DAILY";
+      return curId === "PLAN_CORE_PASS";
     }
     if (planId === PLAN_AUTOPILOT_PASS) {
-      return curId === "PLAN_AUTOPILOT_PASS" || curId === "AUTOPILOT_WEEKLY";
+      return curId === "PLAN_AUTOPILOT_PASS";
     }
     if (planId === PLAN_FREE) {
       return curId === "FREE";

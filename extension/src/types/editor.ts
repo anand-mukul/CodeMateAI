@@ -39,6 +39,7 @@ export interface InsertionOptions {
   code: string;
   mode?: InsertionMode;
   confirmReplace?: boolean;
+  targetFile?: string;
 }
 
 export interface InsertionResult {
@@ -76,7 +77,7 @@ export interface EditorResponse<T = unknown> {
 export interface EditorAdapter {
   detect(): boolean;
   getValue(): string;
-  insertText(code: string, mode?: InsertionMode): InsertionResult | Promise<InsertionResult>;
+  insertText(code: string, mode?: InsertionMode, targetFilename?: string): InsertionResult | Promise<InsertionResult>;
   focus(): void;
   getSelection(): { start: unknown; end: unknown; text?: string } | null;
   getStatus(): EditorStatus;

@@ -47,50 +47,50 @@ export const AIOptimizeSolution: React.FC<AIOptimizeSolutionProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-slate-900 border border-slate-800 shadow-sm text-xs">
+    <div className="flex flex-col gap-3 p-3 rounded-lg bg-slate-900 border border-slate-800 shadow-xs text-xs">
       {/* Header */}
       <div className="flex items-center justify-between pb-2 border-b border-slate-800">
         <div className="flex items-center gap-1.5 font-semibold text-slate-100">
-          <Zap className="w-3.5 h-3.5 text-amber-400" />
-          <span>Code Optimizer & Bottleneck Eliminator</span>
+          <Zap className="w-3.5 h-3.5 text-indigo-400" />
+          <span>Code Optimizer</span>
         </div>
         <button
           onClick={onFetchFromEditor}
-          className="flex items-center gap-1 text-[10px] text-indigo-300 hover:text-white px-2 py-0.5 rounded bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors"
+          className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-750 border border-slate-700 transition-colors cursor-pointer"
           title="Extract current code from CodeChef editor"
         >
-          <FileCode className="w-3 h-3" />
-          <span>Fetch from Editor</span>
+          <FileCode className="w-3 h-3 text-indigo-400" />
+          <span>Fetch from editor</span>
         </button>
       </div>
 
       {/* Input Code Area */}
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between text-[11px] text-slate-400">
-          <span>Student Code to Optimize ({language}):</span>
-          <span className="text-[10px]">{currentCode.length} chars</span>
+          <span>Code to optimize ({language}):</span>
+          <span className="text-[10px] font-mono">{currentCode.length} chars</span>
         </div>
         <textarea
           value={currentCode}
           onChange={(e) => onCodeChange(e.target.value)}
-          placeholder={`// Paste your ${language} code here, or click "Fetch from Editor" above...`}
-          className="w-full h-28 bg-[#070b14] border border-slate-800 rounded-lg p-2.5 font-mono text-[11px] text-slate-200 outline-none focus:border-indigo-500 resize-y"
+          placeholder={`// Paste your ${language} code here, or click "Fetch from editor" above...`}
+          className="w-full h-28 bg-slate-950 border border-slate-800 rounded-lg p-2.5 font-mono text-[11px] text-slate-200 outline-none focus:border-indigo-500 resize-y"
         />
 
         {isLoading ? (
           <div className="flex items-center gap-2 w-full">
             <button
               disabled
-              className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-white bg-slate-800/90 border border-slate-700/60 cursor-wait"
+              className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-medium text-white bg-slate-800 border border-slate-700 cursor-wait"
             >
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
-              <span>Analyzing Bottlenecks & Refactoring...</span>
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-400" />
+              <span>Optimizing code...</span>
             </button>
             {onStop && (
               <button
                 onClick={onStop}
-                className="py-2 px-3 rounded-lg text-xs font-semibold text-rose-300 bg-rose-950/70 hover:bg-rose-900 border border-rose-500/40 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-sm"
-                title="Stop Optimization"
+                className="py-2 px-3 rounded-lg text-xs font-medium text-rose-300 bg-rose-950/70 hover:bg-rose-900 border border-rose-800 flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Stop optimization"
               >
                 <Square className="w-3 h-3 fill-current text-rose-400" />
                 <span>Stop</span>
@@ -101,10 +101,10 @@ export const AIOptimizeSolution: React.FC<AIOptimizeSolutionProps> = ({
           <button
             onClick={onOptimize}
             disabled={!currentCode.trim()}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-amber-600 to-indigo-600 hover:from-amber-500 hover:to-indigo-500 transition-all shadow-md shadow-indigo-500/10 disabled:opacity-50 cursor-pointer active:scale-98"
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors disabled:opacity-50 cursor-pointer"
           >
             <Zap className="w-3.5 h-3.5" />
-            <span>Optimize This Code</span>
+            <span>Optimize code</span>
           </button>
         )}
       </div>
@@ -146,15 +146,15 @@ export const AIOptimizeSolution: React.FC<AIOptimizeSolutionProps> = ({
           </div>
 
           {/* Explanation of Changes */}
-          <div className="p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-[11px] text-indigo-200 leading-relaxed">
-            <span className="font-semibold text-white">Refactoring Rationale: </span>
+          <div className="p-2.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-[11px] text-indigo-200 leading-relaxed">
+            <span className="font-semibold text-white">Summary of changes: </span>
             {optimizationResult.explanation_of_changes}
           </div>
 
           {/* Bottlenecks Eliminated */}
           {optimizationResult.bottlenecks_eliminated && optimizationResult.bottlenecks_eliminated.length > 0 && (
             <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-200">
-              <span className="font-semibold text-emerald-300">Bottlenecks Eliminated:</span>
+              <span className="font-semibold text-emerald-300">Improvements:</span>
               <ul className="list-disc list-inside mt-1 space-y-0.5">
                 {optimizationResult.bottlenecks_eliminated.map((b, i) => (
                   <li key={i}>{b}</li>

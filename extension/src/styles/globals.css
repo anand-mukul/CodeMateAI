@@ -4,7 +4,7 @@
 
 /* ==========================================================================
    CODEMATE AI — SEMANTIC DESIGN TOKEN SYSTEM
-   Benchmarked against Linear, Raycast & Arc.
+   Engineered for developer tool excellence: Linear, Raycast & Arc aesthetic.
    WCAG AA Contrast Compliant & Zero Specificity Clashes.
    ========================================================================== */
 
@@ -21,89 +21,84 @@
   --cm-text-dim: #94a3b8;
   --cm-accent: #6366f1;
   --cm-accent-hover: #4f46e5;
+  --cm-accent-muted: rgba(99, 102, 241, 0.15);
 }
 
-/* THEME: GOOGLE GEMINI (Chromatic Navy) */
+/* THEME: MIDNIGHT (Deep Cobalt Navy) */
+[data-theme="midnight"],
 [data-theme="gemini"] {
   color-scheme: dark;
-  --cm-canvas: #070a14;
-  --cm-surface: #0e1528;
-  --cm-subsurface: #090e1c;
-  --cm-hover: #162340;
-  --cm-border: #1d2c50;
-  --cm-border-sub: #131e36;
-  --cm-text: #ffffff;
+  --cm-canvas: #040816;
+  --cm-surface: #0a1128;
+  --cm-subsurface: #030612;
+  --cm-hover: #121e42;
+  --cm-border: #1a2b56;
+  --cm-border-sub: #132042;
+  --cm-text: #f8fafc;
   --cm-text-muted: #cbd5e1;
   --cm-text-dim: #94a3b8;
-  --cm-accent: #4285F4;
-  --cm-accent-hover: #3b82f6;
+  --cm-accent: #3b82f6;
+  --cm-accent-hover: #2563eb;
+  --cm-accent-muted: rgba(59, 130, 246, 0.15);
 }
 
-/* THEME: OPENAI (Emerald Cyber) */
-[data-theme="openai"] {
-  color-scheme: dark;
-  --cm-canvas: #07120e;
-  --cm-surface: #0d1e18;
-  --cm-subsurface: #081510;
-  --cm-hover: #132d24;
-  --cm-border: #1a3c30;
-  --cm-border-sub: #10271f;
-  --cm-text: #ffffff;
-  --cm-text-muted: #d1fae5;
-  --cm-text-dim: #6ee7b7;
-  --cm-accent: #10a37f;
-  --cm-accent-hover: #059669;
-}
-
-/* THEME: CLAUDE (Warm Terracotta) */
-[data-theme="claude"] {
-  color-scheme: dark;
-  --cm-canvas: #120e09;
-  --cm-surface: #1e1710;
-  --cm-subsurface: #140f09;
-  --cm-hover: #2d2217;
-  --cm-border: #3d2f1f;
-  --cm-border-sub: #271e13;
-  --cm-text: #ffffff;
-  --cm-text-muted: #fed7aa;
-  --cm-text-dim: #fdba74;
-  --cm-accent: #ea580c;
-  --cm-accent-hover: #c2410c;
-}
-
-/* THEME: NORD (Arctic Frost) */
+/* THEME: SLATE (Monochrome Zinc & Steel) */
+[data-theme="slate"],
 [data-theme="nord"] {
   color-scheme: dark;
-  --cm-canvas: #242933;
-  --cm-surface: #2e3440;
-  --cm-subsurface: #1e222a;
-  --cm-hover: #3b4252;
-  --cm-border: #434c5e;
-  --cm-border-sub: #3b4252;
-  --cm-text: #eceff4;
-  --cm-text-muted: #e5e9f0;
-  --cm-text-dim: #d8dee9;
-  --cm-accent: #88c0d0;
-  --cm-accent-hover: #81a1c1;
+  --cm-canvas: #0d1117;
+  --cm-surface: #161b22;
+  --cm-subsurface: #090d12;
+  --cm-hover: #21262d;
+  --cm-border: #30363d;
+  --cm-border-sub: #21262d;
+  --cm-text: #f0f6fc;
+  --cm-text-muted: #c9d1d9;
+  --cm-text-dim: #8b949e;
+  --cm-accent: #38bdf8;
+  --cm-accent-hover: #0284c7;
+  --cm-accent-muted: rgba(56, 189, 248, 0.15);
 }
 
-/* THEME: DRACULA (Vampiric Violet) */
-[data-theme="dracula"] {
+/* THEME: EMERALD (Deep Forest Carbon) */
+[data-theme="emerald"],
+[data-theme="openai"],
+[data-theme="cyberpunk"] {
   color-scheme: dark;
-  --cm-canvas: #1e1f29;
-  --cm-surface: #282a36;
-  --cm-subsurface: #191a21;
-  --cm-hover: #343746;
-  --cm-border: #44475a;
-  --cm-border-sub: #343746;
-  --cm-text: #f8f8f2;
-  --cm-text-muted: #e2e8f0;
-  --cm-text-dim: #6272a4;
-  --cm-accent: #bd93f9;
-  --cm-accent-hover: #ff79c6;
+  --cm-canvas: #060d0a;
+  --cm-surface: #0b1a14;
+  --cm-subsurface: #040907;
+  --cm-hover: #132b21;
+  --cm-border: #1c3d30;
+  --cm-border-sub: #132c22;
+  --cm-text: #f0fdf4;
+  --cm-text-muted: #bbf7d0;
+  --cm-text-dim: #86efac;
+  --cm-accent: #10b981;
+  --cm-accent-hover: #059669;
+  --cm-accent-muted: rgba(16, 185, 129, 0.15);
 }
 
-/* THEME: LIGHT (Crisp High-Contrast Paper) */
+/* THEME: VIOLET (Amethyst Plum) */
+[data-theme="violet"],
+[data-theme="dracula"],
+[data-theme="claude"] {
+  color-scheme: dark;
+  --cm-canvas: #0f0a1a;
+  --cm-surface: #19122b;
+  --cm-subsurface: #0a0612;
+  --cm-hover: #271d42;
+  --cm-border: #3b2c61;
+  --cm-border-sub: #291e45;
+  --cm-text: #faf5ff;
+  --cm-text-muted: #e9d5ff;
+  --cm-text-dim: #c084fc;
+  --cm-accent: #a855f7;
+  --cm-accent-hover: #9333ea;
+  --cm-accent-muted: rgba(168, 85, 247, 0.15);
+}
+
+/* THEME: LIGHT (Crisp High-Contrast Daylight) */
 [data-theme="light"] {
   color-scheme: light;
   --cm-canvas: #f8fafc;
@@ -117,6 +112,7 @@
   --cm-text-dim: #64748b;
   --cm-accent: #4f46e5;
   --cm-accent-hover: #4338ca;
+  --cm-accent-muted: rgba(79, 70, 229, 0.1);
 }
 
 /* ==========================================================================
@@ -131,6 +127,7 @@ body {
   background-color: var(--cm-canvas);
   color: var(--cm-text);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .bg-slate-950,
@@ -145,6 +142,7 @@ body {
 .bg-slate-950\/80,
 .bg-slate-950\/70,
 .bg-slate-950\/60,
+.bg-slate-950\/50,
 .bg-slate-900\/60,
 .bg-slate-900\/70,
 .bg-slate-900\/80,
@@ -165,8 +163,9 @@ body {
   border-color: var(--cm-border) !important;
 }
 
+/* High-contrast and theme-responsive text overrides */
 [data-theme="light"] .text-slate-100,
-[data-theme="light"] .text-white:not(button):not(.bg-indigo-600 *):not(.bg-emerald-600 *):not(.bg-purple-600 *):not(.bg-amber-600 *) {
+[data-theme="light"] .text-white:not(button):not(.bg-indigo-600 *):not(.bg-emerald-600 *):not(.bg-purple-600 *):not(.bg-amber-600 *):not(.bg-red-600 *) {
   color: var(--cm-text) !important;
 }
 
@@ -184,7 +183,8 @@ body {
 button.bg-indigo-600,
 button.bg-emerald-600,
 button.bg-purple-600,
-button.bg-amber-600 {
+button.bg-amber-600,
+button.bg-red-600 {
   color: #ffffff !important;
 }
 

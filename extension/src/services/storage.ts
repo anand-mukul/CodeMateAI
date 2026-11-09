@@ -40,7 +40,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   version: 2,
   backendUrl: (
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) ||
-    'https://codemate-backend-wsi1.onrender.com'
+    'http://localhost:8000'
   ).replace(/\/$/, ''),
   activeProvider: 'openrouter',
   aiMode: 'free',

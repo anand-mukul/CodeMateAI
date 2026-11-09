@@ -34,13 +34,13 @@ export const EditorStatus: React.FC<EditorStatusProps> = ({
       <div className="grid grid-cols-2 gap-y-2 gap-x-3 text-xs">
         {/* Platform */}
         <div>
-          <span className="text-[10px] uppercase tracking-wider text-slate-500 block">Platform</span>
+          <span className="text-[11px] text-slate-500 block">Platform</span>
           <span className="font-medium text-slate-200">{platform}</span>
         </div>
 
         {/* Page Context */}
         <div>
-          <span className="text-[10px] uppercase tracking-wider text-slate-500 block">Page Type</span>
+          <span className="text-[11px] text-slate-500 block">Page Type</span>
           <span className="font-medium text-slate-200">
             {isPractice ? 'Practice Problem' : 'Contest / Other'}
           </span>
@@ -48,7 +48,7 @@ export const EditorStatus: React.FC<EditorStatusProps> = ({
 
         {/* Editor Detection */}
         <div>
-          <span className="text-[10px] uppercase tracking-wider text-slate-500 block">Editor Status</span>
+          <span className="text-[11px] text-slate-500 block">Editor Status</span>
           <div className="flex items-center gap-1.5 mt-0.5">
             {isLoading ? (
               <span className="text-slate-400 text-xs">Inspecting...</span>
@@ -68,7 +68,7 @@ export const EditorStatus: React.FC<EditorStatusProps> = ({
 
         {/* Framework */}
         <div>
-          <span className="text-[10px] uppercase tracking-wider text-slate-500 block">Framework</span>
+          <span className="text-[11px] text-slate-500 block">Framework</span>
           <div className="flex items-center gap-1 mt-0.5">
             <Layers className="w-3.5 h-3.5 text-slate-400" />
             <span className="font-medium text-slate-200">
@@ -79,7 +79,7 @@ export const EditorStatus: React.FC<EditorStatusProps> = ({
 
         {/* Adapter */}
         <div>
-          <span className="text-[10px] uppercase tracking-wider text-slate-500 block">Adapter</span>
+          <span className="text-[11px] text-slate-500 block">Adapter</span>
           <div className="flex items-center gap-1.5 mt-0.5">
             {isAdapterReady ? (
               <>
@@ -97,7 +97,7 @@ export const EditorStatus: React.FC<EditorStatusProps> = ({
 
         {/* Insertion Support */}
         <div>
-          <span className="text-[10px] uppercase tracking-wider text-slate-500 block">Insertion</span>
+          <span className="text-[11px] text-slate-500 block">Insertion</span>
           <div className="flex items-center gap-1.5 mt-0.5">
             {isInsertionSupported ? (
               <>

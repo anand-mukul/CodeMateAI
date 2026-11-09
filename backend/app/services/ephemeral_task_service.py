@@ -4,6 +4,7 @@ Coordinates dependency DAG sequencing, context compression, and contract-aware f
 Ensures zero contract drift across multi-step project execution on CodeChef.
 """
 
+import asyncio
 import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -77,7 +78,10 @@ class EphemeralTaskService:
         )
 
         try:
-            raw_resp = await provider.generate_text(prompt, system_prompt="You output strictly valid JSON without conversational wrapper.")
+            raw_resp = await asyncio.wait_for(
+                provider.generate_text(prompt, system_prompt="You output strictly valid JSON without conversational wrapper."),
+                timeout=6.0,
+            )
             match = re.search(r"\{.*\}", raw_resp, re.DOTALL)
             if match:
                 data = json.loads(match.group(0))
@@ -91,7 +95,7 @@ class EphemeralTaskService:
                 summary = data.get("summary", f"Multi-file {framework} implementation plan across {len(final_order)} files.")
                 return framework, final_order, summary
         except Exception as e:
-            logger.warning(f"[EphemeralTaskService] LLM plan generation failed, using heuristic: {e}")
+            logger.warning(f"[EphemeralTaskService] Fast heuristic fallback engaged: {e}")
 
         # Fallback heuristic
         detected_fw = target_framework or ("springboot" if any(f.endswith(".java") for f in file_list) else "react")

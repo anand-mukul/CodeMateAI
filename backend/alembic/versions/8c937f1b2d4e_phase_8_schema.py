@@ -17,9 +17,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Add role to users
+    # 1. Add role to users using native enum
+    bind = op.get_bind()
+    user_role_enum = sa.Enum('USER', 'ADMIN', name='user_role_enum')
+    user_role_enum.create(bind, checkfirst=True)
     with op.batch_alter_table('users', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('role', sa.String(length=30), server_default='user', nullable=False))
+        batch_op.add_column(sa.Column('role', user_role_enum, server_default='USER', nullable=False))
 
     # 2. Analytics Tables
     op.create_table(
