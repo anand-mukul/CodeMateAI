@@ -107,11 +107,34 @@ export const AIActions: React.FC<AIActionsProps> = ({
     };
   }, []);
 
+  // Reactive Memory Context Eviction: Automatically flush cached session when problem statement changes
+  useEffect(() => {
+    const currentTitle = (problemContext?.problemTitle || problemContext?.problemCode || '').trim();
+    if (multiFileSession && currentTitle && multiFileSession.problem_title) {
+      const sessTitle = (multiFileSession.problem_title || '').trim();
+      if (sessTitle !== currentTitle) {
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.remove(['codemate_multifile_session_v1'], () => {
+            setMultiFileSession(null);
+          });
+          chrome.storage.local.get(['codemate_ai_settings_v1'], (st: any) => {
+            const baseUrl = st?.codemate_ai_settings_v1?.backendUrl || 'http://localhost:8000';
+            fetch(`${baseUrl}/api/projects/ephemeral/clear-context`, { method: 'POST' }).catch(() => {});
+          });
+        }
+      }
+    }
+  }, [problemContext?.problemTitle, problemContext?.problemCode, multiFileSession]);
+
   const handleClearSession = () => {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       chrome.storage.local.remove(['codemate_multifile_session_v1'], () => {
         setMultiFileSession(null);
         onNotify('Multi-file project session cleared.', false);
+      });
+      chrome.storage.local.get(['codemate_ai_settings_v1'], (st: any) => {
+        const baseUrl = st?.codemate_ai_settings_v1?.backendUrl || 'http://localhost:8000';
+        fetch(`${baseUrl}/api/projects/ephemeral/clear-context`, { method: 'POST' }).catch(() => {});
       });
     }
   };

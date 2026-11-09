@@ -95,7 +95,9 @@ class SolutionGeneratorService:
                 f"1. Implement ONLY this current active file. Do not replace it with code for other files.\n"
                 f"2. PRESERVE EXISTING CLASS DECLARATION & PACKAGE: Keep the exact class/interface name, package, annotations, and parameters already declared in this starter code. Do NOT rename the class to match the file name if it differs.\n"
                 f"3. Fulfill all `// TODO` items, missing methods, and requirements inside this existing file structure.\n"
-                f"4. Return the full completed ready-to-compile file code in the `code` field."
+                f"4. For Spring components, runners, and controllers, use field-level @Autowired injection directly on dependency fields (@Autowired private ServiceType serviceField;) without final modifiers, as automated evaluators specifically check for field-level reflection.\n"
+                f"5. If this file contains @Test methods, MockMvc, or test annotations, complete all test methods and preserve all @Test annotations and test framework imports.\n"
+                f"6. Return the full completed ready-to-compile file code in the `code` field."
             )
         elif problem.workspace_files:
             files_desc = "\n\n".join([
@@ -110,8 +112,10 @@ class SolutionGeneratorService:
                 f"1. Complete all `// TODO` items across the files according to problem instructions.\n"
                 f"2. Return the completed code for each file in the `workspace_files` list, where each item has `filename` and `code`.\n"
                 f"3. PRESERVE EXISTING DECLARATIONS: Retain the exact class names, packages, and annotations present in each file's starter code.\n"
-                f"4. In the primary `code` field, include the primary completed service/runner file.\n"
-                f"5. Do NOT leave any TODO placeholders or incomplete methods.\n"
+                f"4. For Spring components, runners, and controllers, use field-level @Autowired injection on dependency fields (@Autowired private ServiceType serviceField;) without final modifiers, to satisfy automated evaluator checks.\n"
+                f"5. If a file contains @Test annotations or test TODOs, fulfill all test methods and preserve all test annotations and test imports.\n"
+                f"6. In the primary `code` field, include the primary completed service/runner file.\n"
+                f"7. Do NOT leave any TODO placeholders or incomplete methods.\n"
             )
 
         system_prompt = load_prompt_template(
@@ -180,6 +184,41 @@ class SolutionGeneratorService:
         # Normalize and validate Big-O complexity
         solution.complexity = ComplexityAnalyzer.validate_complexity(solution.complexity)
 
+        # Field-level @Autowired healing and final stripping for Java solutions
+        if solution and problem.selected_language and problem.selected_language.lower() in ("java", "generic"):
+            def _heal_autowired(src: str) -> str:
+                # 1. Strip 'final' from @Autowired fields
+                src = re.sub(
+                    r"(@Autowired\s*\n?\s*private)\s+final\s+([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+);",
+                    r"\1 \2 \3;",
+                    src,
+                )
+                # 2. Generic Spring Component/Runner Field-Level Injection Healing
+                if bool(re.search(r"@(?:Component|Service|RestController|Controller|Repository)\b|implements\s+CommandLineRunner", src)):
+                    class_match = re.search(r"\bpublic\s+class\s+([A-Za-z0-9_]+)\b", src)
+                    if class_match:
+                        c_name = class_match.group(1)
+                        single_ctor = re.search(
+                            r"\n[ \t]*(?:@Autowired[ \t]*\n[ \t]*)?public\s+" + re.escape(c_name) + r"\s*\(\s*([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*\)\s*\{[ \t\n]*this\.\2\s*=\s*\2;\s*\}",
+                            src,
+                        )
+                        if single_ctor:
+                            d_type = single_ctor.group(1)
+                            d_name = single_ctor.group(2)
+                            f_pattern = re.compile(rf"(\n[ \t]*)private\s+(?:final\s+)?{re.escape(d_type)}\s+{re.escape(d_name)};")
+                            if f_pattern.search(src):
+                                if not re.search(rf"@Autowired[ \t\n]+private\s+(?:final\s+)?{re.escape(d_type)}\s+{re.escape(d_name)};", src):
+                                    src = f_pattern.sub(rf"\1@Autowired\1private {d_type} {d_name};", src, count=1)
+                                src = src[:single_ctor.start()] + src[single_ctor.end():]
+                                if "import org.springframework.beans.factory.annotation.Autowired;" not in src and "import org.springframework." in src:
+                                    src = re.sub(r"(package\s+[a-zA-Z0-9_\.]+;\n\n?)", r"\1import org.springframework.beans.factory.annotation.Autowired;\n", src)
+                return src
+
+            solution.code = _heal_autowired(solution.code)
+            if solution.workspace_files:
+                for wf in solution.workspace_files:
+                    wf.code = _heal_autowired(wf.code)
+
         # Static response quality validation
         _, warnings = ResponseValidator.validate_solution(solution, problem.selected_language)
         if warnings:
@@ -246,6 +285,24 @@ class SolutionGeneratorService:
             target_class = fname.split(".")[0]
             framework_desc = f"{framework} ({primary_lang})" if framework != "generic" else primary_lang
 
+            is_test_file = (
+                fname.lower().endswith(("test.java", "tests.java", "testcase.java"))
+                or "src/test" in fname.lower()
+                or "/test/" in fname.lower()
+                or "/tests/" in fname.lower()
+            )
+
+            if is_test_file:
+                test_class_match = re.search(r"\b(?:public\s+)?class\s+([A-Za-z0-9_]*Test[A-Za-z0-9_]*)\b", orig_code)
+                effective_test_class = test_class_match.group(1) if test_class_match else target_class
+                class_rule = f"2. TEST CLASS PRESERVATION: Retain the test class structure and name ('{effective_test_class}') declared in the starter code. Do not force rename to {target_class}."
+                role_rule = "3. TEST SUITE IMPLEMENTATION: This file is an automated test suite. Complete all @Test methods and fulfill every single // TODO item using mockMvc.perform(...) and assertions."
+                compile_rule = "4. TEST FRAMEWORK INTEGRITY: Preserve all @Test annotations, @SpringBootTest, @AutoConfigureMockMvc, MockMvc injection, and org.junit.* / Spring test imports. Never omit or strip test annotations!"
+            else:
+                class_rule = f"2. CLASS NAME INTEGRITY: The class inside '{fname}' MUST be named exactly '{target_class}'. NEVER declare another class (e.g. if file is {fname}, declare public class {target_class}, NEVER a Controller or Test class)."
+                role_rule = f"3. STRICT ROLE ISOLATION: If '{fname}' is a Service or Component, declare @Service or @Component. For dependency injection, use field-level @Autowired injection (e.g. @Autowired private ServiceType serviceField;) without final modifiers, to satisfy automated evaluators requiring field-level injection. NEVER put @RestController or HTTP endpoints in a Service. If '{fname}' is a Model, implement only fields, getters, setters, and constructors."
+                compile_rule = f"4. CRITICAL COMPILE SAFETY: This file compiles in the production source tree (src/main/). NEVER include test framework imports or annotations (@SpringBootTest, MockMvc, @Test, org.junit.*, jest, vitest) inside this file."
+
             file_prompt = (
                 f"You are an expert {framework_desc} engineer.\n\n"
                 f"TASK: Complete ONLY the single project file '{fname}'.\n\n"
@@ -255,9 +312,9 @@ class SolutionGeneratorService:
                 f"```{file_lang}\n{orig_code}\n```\n\n"
                 f"STRICT ENGINEERING INSTRUCTIONS:\n"
                 f"1. Fulfill all `// TODO` items and missing methods/components in '{fname}'.\n"
-                f"2. CLASS NAME INTEGRITY: The class inside '{fname}' MUST be named exactly '{target_class}'. NEVER declare another class (e.g. if file is {fname}, declare public class {target_class}, NEVER a Controller or Test class).\n"
-                f"3. STRICT ROLE ISOLATION: If '{fname}' is a Service or Component, declare @Service or @Component with constructor injection. NEVER put @RestController or HTTP endpoints in a Service. If '{fname}' is a Model, implement only fields, getters, setters, and constructors.\n"
-                f"4. CRITICAL COMPILE SAFETY: This file compiles in the production source tree (src/main/). NEVER include test framework imports or annotations (@SpringBootTest, MockMvc, @Test, org.junit.*, jest, vitest) inside this file.\n"
+                f"{class_rule}\n"
+                f"{role_rule}\n"
+                f"{compile_rule}\n"
                 f"5. Return ONLY the complete, ready-to-run source code for '{fname}'. Do NOT output conversational filler, just the code inside ```{file_lang} ```."
             )
 
@@ -267,17 +324,27 @@ class SolutionGeneratorService:
                 if extracted_code and len(extracted_code.strip()) > 20:
                     code = extracted_code.strip()
                     if file_lang == "java":
-                        wrong_class_match = re.search(r"\bpublic\s+(class|interface|record|enum)\s+([A-Za-z0-9_]+)\b", code)
-                        if wrong_class_match:
-                            detected_kind = wrong_class_match.group(1)
-                            detected_name = wrong_class_match.group(2)
-                            if detected_name != target_class:
-                                code = re.sub(
-                                    rf"\bpublic\s+{detected_kind}\s+{detected_name}\b",
-                                    f"public {detected_kind} {target_class}",
-                                    code,
-                                    count=1,
-                                )
+                        if not is_test_file:
+                            wrong_class_match = re.search(r"\bpublic\s+(class|interface|record|enum)\s+([A-Za-z0-9_]+)\b", code)
+                            if wrong_class_match:
+                                detected_kind = wrong_class_match.group(1)
+                                detected_name = wrong_class_match.group(2)
+                                if detected_name != target_class:
+                                    code = re.sub(
+                                        rf"\bpublic\s+{detected_kind}\s+{detected_name}\b",
+                                        f"public {detected_kind} {target_class}",
+                                        code,
+                                        count=1,
+                                    )
+                            code = re.sub(r"import\s+org\.junit[^\n]+;\n?", "", code)
+                            code = re.sub(r"import\s+org\.springframework\.boot\.test[^\n]+;\n?", "", code)
+                            code = re.sub(r"@Test\s*\n\s*(?:public\s+|void\s+)[^}]+\}\n?", "", code, flags=re.DOTALL)
+                            code = re.sub(r"@(?:SpringBootTest|WebMvcTest|AutoConfigureMockMvc)\b[^\n]*\n?", "", code)
+                        code = re.sub(
+                            r"(@Autowired\s*\n?\s*private)\s+final\s+([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+);",
+                            r"\1 \2 \3;",
+                            code,
+                        )
                         open_b = code.count('{')
                         close_b = code.count('}')
                         if open_b > close_b:

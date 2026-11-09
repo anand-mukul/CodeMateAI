@@ -96,10 +96,27 @@ import { ClipboardManager } from '../clipboard/clipboard-manager';
 
   // Initialize Page Observer & Launcher if on CodeChef
   if (PageDetector.isCodeChef()) {
+    let lastProblemIdentifier: string | null = null;
+
     const syncCurrentProblem = () => {
       if (PageDetector.isSupportedPracticePage()) {
         try {
           const problem = PageDetector.getProblemContext();
+          const currentId = problem.problemCode || problem.problemTitle;
+          // Evict stale multi-file working memory whenever the user switches problem statements
+          if (lastProblemIdentifier && currentId && lastProblemIdentifier !== currentId) {
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+              chrome.storage.local.remove(['codemate_multifile_session_v1']);
+              chrome.storage.local.get(['codemate_ai_settings_v1'], (st) => {
+                const baseUrl = st?.codemate_ai_settings_v1?.backendUrl || 'http://localhost:8000';
+                fetch(`${baseUrl}/api/projects/ephemeral/clear-context`, { method: 'POST' }).catch(() => {});
+              });
+            }
+          }
+          if (currentId) {
+            lastProblemIdentifier = currentId;
+          }
+
           if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
             chrome.storage.local.set({ codemate_active_problem_v1: problem });
           }

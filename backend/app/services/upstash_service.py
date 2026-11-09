@@ -230,6 +230,47 @@ class UpstashRedisService:
         return success
 
     @classmethod
+    async def clear_all_task_contexts(cls) -> bool:
+        """
+        Purges all active ephemeral working memory across memory stores and Redis.
+        Called when problem statement changes or page reloads.
+        """
+        async with _store_lock:
+            _in_memory_task_store.clear()
+            logger.info("[Task Memory] Cleared all local ephemeral task stores.")
+
+        if cls._has_upstash_credentials():
+            try:
+                base_url = settings.UPSTASH_REDIS_REST_URL.rstrip("/")
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    # Scan and delete task keys
+                    scan_res = await client.get(
+                        f"{base_url}/keys/cm:task:*",
+                        headers=cls._get_rest_headers(),
+                    )
+                    if scan_res.status_code == 200:
+                        keys = scan_res.json().get("result", [])
+                        if keys:
+                            for k in keys:
+                                await client.post(f"{base_url}/del/{k}", headers=cls._get_rest_headers())
+                            logger.info(f"[Upstash Redis] Flushed {len(keys)} task context keys.")
+            except Exception as e:
+                logger.warning(f"[Upstash Redis] Error flushing task keys: {e}")
+
+        # Also flush Redis client if configured
+        client = cls.get_redis_client()
+        if client:
+            try:
+                keys = client.keys("cm:task:*")
+                if keys:
+                    client.delete(*keys)
+                    logger.info(f"[Redis Client] Flushed {len(keys)} task context keys.")
+            except Exception as e:
+                logger.debug(f"[Redis Client] Flush task keys error: {e}")
+
+        return True
+
+    @classmethod
     def _clean_expired_memory_tasks(cls) -> None:
         """Removes stale tasks exceeding TTL from memory store."""
         now = time.time()
