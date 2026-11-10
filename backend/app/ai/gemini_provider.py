@@ -42,7 +42,8 @@ class GeminiProvider(AIProvider):
         model_name: Optional[str] = None,
         base_url: Optional[str] = None,
     ):
-        self._api_key = api_key or settings.GEMINI_API_KEY or settings.AI_API_KEY
+        raw_key = api_key.strip() if (api_key and isinstance(api_key, str)) else None
+        self._api_key = raw_key or settings.GEMINI_API_KEY or settings.AI_API_KEY
         self._model_name = model_name or settings.GEMINI_MODEL or settings.AI_MODEL or "gemini-3.8-flash"
         self._fallback_models = [
             "gemini-3.8-flash",
@@ -125,7 +126,7 @@ class GeminiProvider(AIProvider):
     def _get_endpoint(self, model_name: Optional[str] = None) -> str:
         if not self._api_key:
             raise ValueError(
-                "Gemini API key is missing. Please set AI_API_KEY in backend/.env to use Gemini."
+                "Gemini API key is missing. Please enter your API key in Settings."
             )
         target = model_name or (self._get_candidate_models()[0] if self._get_candidate_models() else self._model_name)
         return f"{self._base_url}/models/{target}:generateContent?key={self._api_key}"
@@ -316,7 +317,7 @@ class GeminiProvider(AIProvider):
                 "provider": self.provider_name,
                 "model": self.model_name,
                 "is_mock": False,
-                "error": "AI_API_KEY is not configured in backend/.env",
+                "error": "Google Gemini API key is not configured. Please enter your API key in Settings.",
             }
 
         try:
@@ -341,14 +342,14 @@ class GeminiProvider(AIProvider):
                 "provider": self.provider_name,
                 "model": self.model_name,
                 "is_mock": False,
-                "error": "Gemini connection probe timed out after 10.0s",
+                "error": "Connection to Google Gemini timed out. Please try again.",
             }
-        except Exception as e:
+        except Exception:
             return {
                 "available": False,
                 "provider": self.provider_name,
                 "model": self.model_name,
                 "is_mock": False,
-                "error": str(e),
+                "error": "Unable to reach Google Gemini servers. Please verify your API key and connection.",
             }
 

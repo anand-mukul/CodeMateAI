@@ -145,7 +145,13 @@ export class AuthService {
     this.cachedRefreshToken = null;
 
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-      await chrome.storage.local.remove([AUTH_TOKENS_KEY, 'codemate_auth_tokens', 'codemate_user_v1']);
+      await chrome.storage.local.remove([
+        AUTH_TOKENS_KEY,
+        'codemate_auth_tokens',
+        'codemate_user_v1',
+        'codemate_subscription_v1',
+        'codemate_multifile_session_v1',
+      ]);
     }
   }
 

@@ -38,6 +38,7 @@ from app.core.security import sanitize_untrusted_text
 from app.core.logging import logger
 from app.services.project_indexer.language_detector import LanguageDetector
 from app.services.solution_generator import SolutionGeneratorService
+from app.services.starter_fidelity import StarterFidelityEngine
 from fastapi import Request
 from app.services.entitlement_service import (
     get_current_user,
@@ -471,16 +472,11 @@ async def diagnose_and_fix(
 # EPHEMERAL PROJECT CONTEXT & PROGRESSIVE FILE SOLVING (EPC-PFS) ENDPOINTS
 # =========================================================================
 
-@router.post(
-    "/ephemeral/clear-context",
-    dependencies=[
-        Depends(require_feature_entitlement("one_click_insert")),
-    ],
-)
+@router.post("/ephemeral/clear-context")
 async def clear_ephemeral_context():
     """
     Clears all active ephemeral task context and working memory across Redis and local memory stores.
-    Invoked when problem statement changes or page is reloaded.
+    Invoked when problem statement changes, session is deleted, or page is reloaded.
     """
     from app.services.upstash_service import UpstashRedisService
     await UpstashRedisService.clear_all_task_contexts()
@@ -491,8 +487,7 @@ async def clear_ephemeral_context():
     "/ephemeral/blueprint",
     response_model=EphemeralBlueprintResponse,
     dependencies=[
-        Depends(require_feature_entitlement("one_click_insert")),
-        Depends(enforce_daily_quota("autopilot")),
+        Depends(require_feature_entitlement("generate")),
         Depends(verify_byok_entitlement),
     ],
 )
@@ -575,10 +570,12 @@ async def generate_ephemeral_blueprint(
             "tsconfig.json", "build.gradle", ".gitignore", "settings.gradle"
         )
         is_java_bootstrap = (
-            fn_lower.endswith(("application.java", "app.java"))
-            or fn_lower in ("main.java", "index.java")
-            or "public static void main" in fcontent
-            or "@springbootapplication" in fcontent.lower()
+            "@springbootapplication" in fcontent.lower()
+            or (
+                "public static void main" in fcontent
+                and "commandlinerunner" not in fcontent.lower()
+                and not bool(re.search(r"@(?:Component|Service|RestController|Controller|Repository)\b", fcontent))
+            )
         )
         is_main_bootstrap = (
             is_java_bootstrap
@@ -670,8 +667,8 @@ async def generate_ephemeral_blueprint(
     "/ephemeral/complete-file",
     response_model=EphemeralCompleteFileResponse,
     dependencies=[
-        Depends(require_feature_entitlement("one_click_insert")),
-        Depends(enforce_daily_quota("autopilot")),
+        Depends(require_feature_entitlement("generate")),
+        Depends(enforce_daily_quota("generate")),
         Depends(verify_byok_entitlement),
     ],
 )
@@ -753,10 +750,12 @@ async def complete_ephemeral_file(
     is_main_entrypoint = (
         not is_test_file
         and (
-            fname_clean.lower().endswith(("application.java", "app.java"))
-            or fname_clean.lower() in ("main.java", "index.java")
-            or "public static void main" in orig_code
-            or "@springbootapplication" in orig_code.lower()
+            "@springbootapplication" in orig_code.lower()
+            or (
+                "public static void main" in orig_code
+                and "implements commandlinerunner" not in orig_code.lower()
+                and not bool(re.search(r"@(?:Component|Service|RestController|Controller|Repository)\b", orig_code))
+            )
         )
     )
 
@@ -791,10 +790,13 @@ async def complete_ephemeral_file(
     if todo_matches:
         todo_list_text = "\n".join([f"      [{idx+1}] {td.strip()}" for idx, td in enumerate(todo_matches)])
         todo_directive = (
-            f"\n   - MANDATORY TODO IMPLEMENTATION CHECKLIST:\n"
-            f"     The starter code in '{fname_clean}' contains explicit TODO instructions that MUST ALL be completed:\n"
+            f"\n   - STARTER CODE TODO CHECKLIST:\n"
+            f"     The starter code in '{fname_clean}' contains the following TODO items:\n"
             f"{todo_list_text}\n"
-            f"     You MUST fulfill EVERY single item above. Do NOT leave any method returning null/empty or unhandled!\n"
+            f"     CRITICAL PRECEDENCE RULE FOR TODOS:\n"
+            f"     - Fulfill the algorithmic and logic requirements requested by these TODO items.\n"
+            f"     - HOWEVER, if any TODO item or in-code comment conflicts with instructions in the PROBLEM STATEMENT (for example, if a TODO tells you to replace field injection with constructor injection, but the Problem Statement instructs to use @Autowired on the field, or vice versa), the PROBLEM STATEMENT ALWAYS PREVAILS.\n"
+            f"     - You MUST adhere strictly to the PROBLEM STATEMENT specifications and IGNORE any contradictory in-code TODO instruction!\n"
         )
 
     # Universal Starter Code Blank & Stub Extractor (e.g. _______ in CodeChef/HackerRank)
@@ -805,7 +807,7 @@ async def complete_ephemeral_file(
             f"\n   - MANDATORY BLANK & STUB COMPLETION:\n"
             f"     The starter code in '{fname_clean}' contains fill-in-the-blank stubs ('_______').\n"
             f"     You MUST replace every single '_______' with the exact required method call or expression\n"
-            f"     (e.g. 'courseRepository.save(...)', 'courseRepository.findAll()', 'courseRepository.findById(...)')\n"
+            f"     (e.g. repository queries, bean invocations, or domain expressions)\n"
             f"     matching problem requirements. NEVER leave '_______' in the final code!\n"
         )
 
@@ -823,26 +825,27 @@ async def complete_ephemeral_file(
             )
         elif is_in_main_src:
             extra_java_rules += (
-                f"   - PRODUCTION CODE RULE: '{fname_clean}' resides in main source. It MUST NEVER contain @Test, MockMvc, WebMvcTest, or test annotations!\n"
+                f"   - PRODUCTION CODE RULE: '{fname_clean}' resides in main source. It MUST NEVER contain @Test, MockMvc, or test annotations!\n"
             )
 
         if is_main_entrypoint:
             extra_java_rules += (
-                f"   - APPLICATION BOOTSTRAP: Implement standard @SpringBootApplication public class {expected_type_name} with main() method calling SpringApplication.run.\n"
+                f"   - APPLICATION BOOTSTRAP ({expected_type_name}):\n"
+                f"     This is the primary application bootstrap class (@SpringBootApplication).\n"
+                f"     It must ONLY contain the main() method calling SpringApplication.run({expected_type_name}.class, args).\n"
+                f"     DO NOT add @Test methods, mockMvc calls, REST endpoints, or test assertions to this entrypoint!\n"
             )
 
-        # Spring Boot / Enterprise DI Directives (Universal: only active when Spring annotations are present)
-        is_spring_bean = bool(re.search(r"@(?:Component|Service|RestController|Controller|Repository)\b|implements\s+CommandLineRunner", orig_code))
-        if is_spring_bean and not is_test_file:
+        # Dependency Injection & Constructor Directives (Universal: strictly follows problem statement)
+        if not is_test_file:
             extra_java_rules += (
-                f"   - SPRING DEPENDENCY INJECTION & AUTOWIRING (FIELD-LEVEL INJECTION):\n"
-                f"     For Spring dependency injection in components, runners, and controllers ({expected_type_name}):\n"
-                f"     Use FIELD-LEVEL '@Autowired' injection directly on dependency fields:\n"
-                f"     @Autowired\n"
-                f"     private <DependencyType> <dependencyField>;\n"
-                f"     Do NOT use constructor injection unless existing starter code already explicitly declares a constructor with parameters.\n"
-                f"     Do NOT mark @Autowired fields as 'final'.\n"
-                f"     This satisfies automated evaluator suites that specifically inspect field-level @Autowired injection via reflection or AST matching.\n"
+                f"   - DEPENDENCY INJECTION & CONSTRUCTOR ARCHITECTURE (UNIVERSAL):\n"
+                f"     1. ABSOLUTE PRECEDENCE OVER IN-CODE COMMENTS: Even if a starter code comment or TODO says to use constructor injection (or vice-versa), you MUST follow what the PROBLEM STATEMENT specifies. Automated evaluators grade against the problem statement!\n"
+                f"     2. INJECTION STYLE FIDELITY:\n"
+                f"        - Field-Level Injection: When the problem statement specifies field-level injection (e.g. using @Autowired or framework injection annotations on member fields), place the annotation directly on the field and do NOT generate manual constructors. Disregard any starter code TODO telling you to replace field injection with constructor injection.\n"
+                f"        - Constructor Injection: When the problem statement specifies constructor injection or passing dependencies via constructors, implement constructor injection.\n"
+                f"        - Default / Unspecified: If the problem statement does not specify an injection preference, preserve the existing pattern in the starter code.\n"
+                f"        - NEVER mix both field injection and constructor injection for the same dependency.\n"
             )
 
         if "commandlinerunner" in orig_code.lower() or "runner" in fname_clean.lower():
@@ -873,6 +876,10 @@ async def complete_ephemeral_file(
             f"{todo_directive}"
         )
 
+    fidelity_directives = StarterFidelityEngine.build_fidelity_prompt_directives(
+        orig_code, language=file_lang, filename=fname_clean
+    )
+
     file_prompt = (
         f"You are a Principal Software Engineer implementing a production component.\n\n"
         f"TASK: Complete ONLY the single project file '{fname}'.\n\n"
@@ -881,15 +888,25 @@ async def complete_ephemeral_file(
         f"EXISTING STARTER CODE IN '{fname}':\n"
         f"```{file_lang}\n{orig_code}\n```\n\n"
         f"CRITICAL ENGINEERING RULES FOR '{fname}':\n"
-        f"1. Fulfill all `// TODO` items, requirements, and missing methods inside '{fname}'.\n"
+        f"1. HIGHEST MANDATE — PROBLEM STATEMENT IS AUTHORITATIVE: Always give absolute priority to instructions given in the PROBLEM STATEMENT. If any in-code comment, TODO item, starter code pattern, or default framework convention conflicts with the problem statement, the problem statement ALWAYS takes 100% precedence. Never override problem statement specifications.\n"
+        f"2. Fulfill all requirements, missing methods, and TODO items in '{fname}' strictly adhering to problem instructions.\n"
         f"{compiler_rules}"
-        f"3. PRESERVE ANNOTATIONS, IMPORTS & TESTS: If this file defines framework annotations (@Service, @RestController, @Component, etc.), test cases (@Test, MockMvc), or configurations, ensure all necessary annotations and imports are present.\n"
-        f"4. FULL FILE OUTPUT: Return the COMPLETE file starting from package/imports/comments down to the final closing brace or line. Do NOT output only method snippets.\n"
+        f"{fidelity_directives}\n"
+        f"3. PRESERVE ANNOTATIONS & IMPORTS: If this file defines framework annotations (@Service, @RestController, @Component, etc.), retain them. NEVER add @Test methods or test frameworks into production source files unless this file is explicitly a test class (*Test.java).\n"
+        f"4. ABSOLUTE MANDATE - COMPLETE FILE OUTPUT: Return the COMPLETE file starting from `package ...;`, all imports, the complete class header (preserving all extends and implements clauses!), all member variables/dependencies, constructors, and all methods. NEVER return only a method snippet or partial class.\n"
         f"5. Return ONLY the complete source code inside ```{file_lang} ``` with zero conversational text."
     )
 
+    system_prompt = (
+        "You are a Principal Software Engineer implementing a production component.\n"
+        "AUTHORITY HIERARCHY (PROBLEM STATEMENT > IN-CODE COMMENTS):\n"
+        "1. The PROBLEM STATEMENT is the absolute authoritative specification. Always implement what the problem statement requires.\n"
+        "2. If any starter code comment, javadoc, or TODO contradicts the problem statement (e.g. a TODO tells you to replace field injection with constructor injection, but the problem statement instructs @Autowired field injection), YOU MUST OBEY THE PROBLEM STATEMENT AND DISREGARD THE CONFLICTING TODO.\n"
+        "3. Output pure, production-grade, compilable source code."
+    )
+
     try:
-        res = await provider.generate_text(file_prompt)
+        res = await provider.generate_text(file_prompt, system_prompt=system_prompt)
         extracted = SolutionGeneratorService._extract_code(res)
         code = extracted if (extracted and len(extracted.strip()) > 20) else orig_code
     except Exception as err:
@@ -904,19 +921,32 @@ async def complete_ephemeral_file(
             logger.warning(f"LLM generated methods without class declaration for {fname}. Stitching into class structure.")
             all_imports = set(re.findall(r"import\s+[^;]+;", orig_code + "\n" + code))
             imports_block = "\n".join(sorted(all_imports))
-            annotation_block = ""
-            if "@service" in orig_code.lower() or "service" in expected_type_name.lower():
-                annotation_block = "@Service\n"
-            elif "@restcontroller" in orig_code.lower() or "controller" in expected_type_name.lower():
-                annotation_block = "@RestController\n"
-            elif "@component" in orig_code.lower() or "app" in expected_type_name.lower():
-                annotation_block = "@Component\n"
+
+            # Extract starter class header if available (retains annotations + implements + extends)
+            class_header_match = re.search(r"((?:@\w+(?:\([^\)]*\))?\s*)*(?:public|protected)?\s*(?:class|interface|record|enum)\s+[^{]+)\{", orig_code)
+            if class_header_match:
+                class_header = class_header_match.group(1).strip()
+            else:
+                annotation_block = ""
+                if "@service" in orig_code.lower() or "service" in expected_type_name.lower():
+                    annotation_block = "@Service\n"
+                elif "@restcontroller" in orig_code.lower() or "controller" in expected_type_name.lower():
+                    annotation_block = "@RestController\n"
+                elif "@component" in orig_code.lower() or "app" in expected_type_name.lower():
+                    annotation_block = "@Component\n"
+                class_header = f"{annotation_block}public class {expected_type_name}"
+
+            # Extract existing fields/state from starter code so dependencies are not lost
+            fields = StarterFidelityEngine.extract_member_fields(orig_code)
+            field_lines = "\n    ".join([f["declaration"] for f in fields]) if fields else ""
+            if field_lines:
+                field_lines = "\n    " + field_lines + "\n"
 
             code = (
                 f"package {canonical_pkg};\n\n"
                 f"{imports_block}\n\n"
-                f"{annotation_block}"
-                f"public class {expected_type_name} {{\n"
+                f"{class_header} {{\n"
+                f"{field_lines}"
                 f"    {code.strip()}\n"
                 f"}}\n"
             )
@@ -943,12 +973,11 @@ async def complete_ephemeral_file(
                     code,
                 )
 
-            # 4. If in main source and NOT a test file, purge any leaked test annotations
+            # 4. If in main source and NOT a test file, purge any leaked test annotations and methods
             if not is_test_file and ("src/main" in normalized_path or "src/test" not in normalized_path):
-                code = re.sub(r"import\s+org\.junit[^\n]+;\n?", "", code)
-                code = re.sub(r"import\s+org\.springframework\.boot\.test[^\n]+;\n?", "", code)
-                code = re.sub(r"@Test\s*\n\s*(?:public\s+|void\s+)[^}]+\}\n?", "", code, flags=re.DOTALL)
+                code = re.sub(r"import\s+(?:org\.junit|org\.springframework\.boot\.test|org\.springframework\.test)[^;]+;\n?", "", code)
                 code = re.sub(r"@(?:SpringBootTest|WebMvcTest|AutoConfigureMockMvc)\b[^\n]*\n?", "", code)
+                code = StarterFidelityEngine.strip_test_methods(code)
 
             # 5. Generic Field-level @Autowired healing & removing 'final' on autowired fields
             code = re.sub(
@@ -956,51 +985,6 @@ async def complete_ephemeral_file(
                 r"\1 \2 \3;",
                 code,
             )
-
-            # Generic Spring Component/Runner Field-Level Injection Healing:
-            # If a Spring Component/Runner class was generated with single-dependency constructor injection,
-            # convert to field-level @Autowired injection to satisfy automated reflection-based evaluators.
-            if bool(re.search(r"@(?:Component|Service|RestController|Controller|Repository)\b|implements\s+CommandLineRunner", code)):
-                single_ctor_match = re.search(
-                    r"\n[ \t]*(?:@Autowired[ \t]*\n[ \t]*)?public\s+" + re.escape(expected_type_name) + r"\s*\(\s*([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*\)\s*\{[ \t\n]*this\.\2\s*=\s*\2;\s*\}",
-                    code,
-                )
-                if single_ctor_match:
-                    dep_type = single_ctor_match.group(1)
-                    dep_name = single_ctor_match.group(2)
-                    field_decl = re.compile(rf"(\n[ \t]*)private\s+(?:final\s+)?{re.escape(dep_type)}\s+{re.escape(dep_name)};")
-                    if field_decl.search(code):
-                        has_autowired = bool(re.search(rf"@Autowired[ \t\n]+private\s+(?:final\s+)?{re.escape(dep_type)}\s+{re.escape(dep_name)};", code))
-                        if not has_autowired:
-                            code = field_decl.sub(rf"\1@Autowired\1private {dep_type} {dep_name};", code, count=1)
-                        code = code[:single_ctor_match.start()] + code[single_ctor_match.end():]
-                        if "import org.springframework.beans.factory.annotation.Autowired;" not in code and "import org.springframework." in code:
-                            code = re.sub(r"(package\s+[a-zA-Z0-9_\.]+;\n\n?)", r"\1import org.springframework.beans.factory.annotation.Autowired;\n", code)
-
-            # 6. Universal Spring Constructor Injection Autowire Healing
-            # If a Spring Component/Runner class has a parameterized constructor injecting beans, ensure @Autowired is explicitly present
-            if bool(re.search(r"@(?:Component|Service|RestController|Controller|Repository)\b|implements\s+CommandLineRunner", code)):
-                ctor_match = re.search(r"(\n[ \t]*)(public\s+" + re.escape(expected_type_name) + r"\s*\([^)]+\)\s*\{)", code)
-                if ctor_match:
-                    prefix = code[:ctor_match.start()]
-                    if "@Autowired" not in prefix[-80:]:
-                        indent = ctor_match.group(1)
-                        ctor_header = ctor_match.group(2)
-                        code = code[:ctor_match.start()] + f"{indent}@Autowired{indent}{ctor_header}" + code[ctor_match.end():]
-                        if "import org.springframework.beans.factory.annotation.Autowired;" not in code and "import org.springframework." in code:
-                            code = re.sub(r"(package\s+[a-zA-Z0-9_\.]+;\n\n?)", r"\1import org.springframework.beans.factory.annotation.Autowired;\n", code)
-
-        # 5. Balance braces to prevent EOF syntax errors
-        open_b = code.count('{')
-        close_b = code.count('}')
-        if open_b > close_b:
-            code = code.rstrip() + "\n" + ("}" * (open_b - close_b)) + "\n"
-        elif close_b > open_b:
-            excess = close_b - open_b
-            while excess > 0 and code.rstrip().endswith("}"):
-                idx = code.rfind("}")
-                code = code[:idx] + code[idx+1:]
-                excess -= 1
 
     await EventCollector.record_server_event(
         db=db,

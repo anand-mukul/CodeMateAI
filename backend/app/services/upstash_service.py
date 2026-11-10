@@ -23,6 +23,17 @@ class UpstashRedisService:
     Serverless key-value client for Ephemeral Task Contexts.
     """
 
+    _http_client: Optional[httpx.AsyncClient] = None
+
+    @classmethod
+    def _get_http_client(cls) -> httpx.AsyncClient:
+        if cls._http_client is None or cls._http_client.is_closed:
+            cls._http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(5.0, connect=2.0),
+                limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
+            )
+        return cls._http_client
+
     @classmethod
     def _has_upstash_credentials(cls) -> bool:
         return bool(
@@ -85,17 +96,15 @@ class UpstashRedisService:
                 base_url = settings.UPSTASH_REDIS_REST_URL.rstrip("/")
                 key = f"cm:task:{task_id}:state"
                 payload = json.dumps(initial_state)
-                async with httpx.AsyncClient(timeout=1.5) as client:
-                    await client.post(
-                        f"{base_url}/set/{key}",
-                        content=payload,
-                        params={"ex": ttl_seconds},
-                        headers=cls._get_rest_headers(),
-                    )
+                client = cls._get_http_client()
+                await client.post(
+                    f"{base_url}/set/{key}",
+                    content=payload,
+                    params={"ex": ttl_seconds},
+                    headers=cls._get_rest_headers(),
+                )
             except Exception as e:
                 logger.debug(f"[Upstash Redis] Background sync skipped: {e}")
-
-        return initial_state
 
         return initial_state
 
@@ -116,19 +125,19 @@ class UpstashRedisService:
             try:
                 base_url = settings.UPSTASH_REDIS_REST_URL.rstrip("/")
                 key = f"cm:task:{task_id}:state"
-                async with httpx.AsyncClient(timeout=2.0) as client:
-                    resp = await client.get(
-                        f"{base_url}/get/{key}",
-                        headers=cls._get_rest_headers(),
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        result = data.get("result")
-                        if result:
-                            parsed = json.loads(result) if isinstance(result, str) else result
-                            async with _store_lock:
-                                _in_memory_task_store[task_id] = parsed
-                            return parsed
+                client = cls._get_http_client()
+                resp = await client.get(
+                    f"{base_url}/get/{key}",
+                    headers=cls._get_rest_headers(),
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    result = data.get("result")
+                    if result:
+                        parsed = json.loads(result) if isinstance(result, str) else result
+                        async with _store_lock:
+                            _in_memory_task_store[task_id] = parsed
+                        return parsed
             except Exception as e:
                 logger.debug(f"[Upstash Redis] Fetch fallback skipped: {e}")
 
@@ -185,14 +194,14 @@ class UpstashRedisService:
             try:
                 base_url = settings.UPSTASH_REDIS_REST_URL.rstrip("/")
                 key = f"cm:task:{task_id}:state"
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    await client.post(
-                        f"{base_url}/set/{key}",
-                        content=json.dumps(state),
-                        params={"ex": ttl_seconds},
-                        headers=cls._get_rest_headers(),
-                    )
-                    return state
+                client = cls._get_http_client()
+                await client.post(
+                    f"{base_url}/set/{key}",
+                    content=json.dumps(state),
+                    params={"ex": ttl_seconds},
+                    headers=cls._get_rest_headers(),
+                )
+                return state
             except Exception as e:
                 logger.warning(f"[Upstash Redis] Failed to commit step for task {task_id}: {e}")
 
@@ -212,12 +221,12 @@ class UpstashRedisService:
             try:
                 base_url = settings.UPSTASH_REDIS_REST_URL.rstrip("/")
                 key = f"cm:task:{task_id}:state"
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    await client.post(
-                        f"{base_url}/del/{key}",
-                        headers=cls._get_rest_headers(),
-                    )
-                    logger.info(f"[Upstash Redis] Purged ephemeral task keys: {task_id}")
+                client = cls._get_http_client()
+                await client.post(
+                    f"{base_url}/del/{key}",
+                    headers=cls._get_rest_headers(),
+                )
+                logger.info(f"[Upstash Redis] Purged ephemeral task keys: {task_id}")
             except Exception as e:
                 logger.warning(f"[Upstash Redis] Failed to purge {task_id}: {e}")
                 success = False
@@ -242,18 +251,18 @@ class UpstashRedisService:
         if cls._has_upstash_credentials():
             try:
                 base_url = settings.UPSTASH_REDIS_REST_URL.rstrip("/")
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    # Scan and delete task keys
-                    scan_res = await client.get(
-                        f"{base_url}/keys/cm:task:*",
-                        headers=cls._get_rest_headers(),
-                    )
-                    if scan_res.status_code == 200:
-                        keys = scan_res.json().get("result", [])
-                        if keys:
-                            for k in keys:
-                                await client.post(f"{base_url}/del/{k}", headers=cls._get_rest_headers())
-                            logger.info(f"[Upstash Redis] Flushed {len(keys)} task context keys.")
+                client = cls._get_http_client()
+                # Scan and delete task keys
+                scan_res = await client.get(
+                    f"{base_url}/keys/cm:task:*",
+                    headers=cls._get_rest_headers(),
+                )
+                if scan_res.status_code == 200:
+                    keys = scan_res.json().get("result", [])
+                    if keys:
+                        for k in keys:
+                            await client.post(f"{base_url}/del/{k}", headers=cls._get_rest_headers())
+                        logger.info(f"[Upstash Redis] Flushed {len(keys)} task context keys.")
             except Exception as e:
                 logger.warning(f"[Upstash Redis] Error flushing task keys: {e}")
 

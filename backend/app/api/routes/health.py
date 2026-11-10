@@ -48,10 +48,11 @@ async def readiness_check():
             "timestamp": time.time(),
         }
     except Exception as exc:
+        logger.warning(f"Readiness probe encountered error: {exc}")
         return {
             "status": "unhealthy",
             "environment": settings.ENVIRONMENT,
-            "error": str(exc),
+            "error": "Service dependencies are unavailable or degraded.",
             "timestamp": time.time(),
         }
 

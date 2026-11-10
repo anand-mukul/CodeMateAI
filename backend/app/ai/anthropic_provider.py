@@ -26,7 +26,8 @@ class AnthropicProvider(AIProvider):
         model_name: Optional[str] = None,
         base_url: Optional[str] = None,
     ):
-        self._api_key = api_key or settings.ANTHROPIC_API_KEY
+        raw_key = api_key.strip() if (api_key and isinstance(api_key, str)) else None
+        self._api_key = raw_key or settings.ANTHROPIC_API_KEY
         self._model_name = model_name or settings.ANTHROPIC_MODEL or "claude-3-5-sonnet-20241022"
         self._base_url = (
             base_url
@@ -119,7 +120,7 @@ class AnthropicProvider(AIProvider):
                 "provider": self.provider_name,
                 "model": self.model_name,
                 "is_mock": False,
-                "error": "Anthropic Claude API key is not configured. Add your key in Settings > Bring Your Own Key.",
+                "error": "Claude API key is not configured. Please enter your API key in Settings.",
             }
 
         try:
@@ -131,12 +132,12 @@ class AnthropicProvider(AIProvider):
                 "is_mock": False,
                 "sample_response": test_resp[:20].strip(),
             }
-        except Exception as e:
+        except Exception:
             return {
                 "available": False,
                 "provider": self.provider_name,
                 "model": self.model_name,
                 "is_mock": False,
-                "error": str(e),
+                "error": "Unable to reach Claude servers. Please verify your API key and connection.",
             }
 

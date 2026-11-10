@@ -27,6 +27,7 @@ from app.services.project_indexer.language_detector import LanguageDetector
 from app.services.complexity_analyzer import ComplexityAnalyzer
 from app.services.response_validator import ResponseValidator
 from app.services.constraint_analyzer import ConstraintAnalyzer
+from app.services.starter_fidelity import StarterFidelityEngine
 from app.core.logging import logger
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "ai" / "prompts"
@@ -87,17 +88,23 @@ class SolutionGeneratorService:
                 if other_files:
                     context_section = "\n\nPROJECT WORKSPACE CONTEXT (OTHER FILES FOR REFERENCE ONLY):\n" + "\n\n".join(other_files[:4])
 
+            fidelity_rules = StarterFidelityEngine.build_fidelity_prompt_directives(
+                problem.starter_code, language=problem.selected_language, filename="Current File"
+            )
+
             starter_code_section = (
                 f"\n\nCURRENT ACTIVE FILE STARTER CODE TO COMPLETE:\n"
                 f"```{problem.selected_language}\n{safe_starter}\n```\n"
                 f"{context_section}\n\n"
                 f"CRITICAL RULES FOR ACTIVE FILE COMPLETION:\n"
-                f"1. Implement ONLY this current active file. Do not replace it with code for other files.\n"
-                f"2. PRESERVE EXISTING CLASS DECLARATION & PACKAGE: Keep the exact class/interface name, package, annotations, and parameters already declared in this starter code. Do NOT rename the class to match the file name if it differs.\n"
-                f"3. Fulfill all `// TODO` items, missing methods, and requirements inside this existing file structure.\n"
-                f"4. For Spring components, runners, and controllers, use field-level @Autowired injection directly on dependency fields (@Autowired private ServiceType serviceField;) without final modifiers, as automated evaluators specifically check for field-level reflection.\n"
-                f"5. If this file contains @Test methods, MockMvc, or test annotations, complete all test methods and preserve all @Test annotations and test framework imports.\n"
-                f"6. Return the full completed ready-to-compile file code in the `code` field."
+                f"1. HIGHEST MANDATE — PROBLEM STATEMENT IS THE ABSOLUTE SPECIFICATION: Always give 100% priority to instructions given in the PROBLEM STATEMENT. If any in-code comment, javadoc, or TODO in the starter code conflicts with the problem statement (e.g. a TODO suggests constructor injection while the problem statement instructs @Autowired field injection, or vice-versa), the PROBLEM STATEMENT ALWAYS PREVAILS. Disregard any contradictory comment or TODO.\n"
+                f"2. Implement ONLY this current active file. Do not replace it with code for other files.\n"
+                f"3. PRESERVE EXISTING CLASS DECLARATION & PACKAGE: Keep the exact class/interface name, package, annotations, and parameters already declared in this starter code. Do NOT rename the class to match the file name if it differs.\n"
+                f"4. Fulfill missing methods and valid `// TODO` items that align with the problem statement.\n"
+                f"{fidelity_rules}\n"
+                f"5. DEPENDENCY INJECTION & CONSTRUCTORS: Always give absolute priority to instructions in the problem statement. If the problem specifies field-level injection (e.g. '@Autowired'), annotate fields directly and do NOT write manual constructors. If constructor injection is specified, implement constructor injection. If unspecified, preserve starter code patterns. Never generate both field injection and constructor injection for the same dependency.\n"
+                f"6. If this file is a production component (*.java in src/main), NEVER add @Test methods or test frameworks. Only complete and preserve @Test methods if this file is explicitly a test class (*Test.java).\n"
+                f"7. Return the full completed ready-to-compile file code in the `code` field."
             )
         elif problem.workspace_files:
             files_desc = "\n\n".join([
@@ -109,13 +116,14 @@ class SolutionGeneratorService:
                 f"The user's project workspace contains the following files:\n"
                 f"{files_desc}\n\n"
                 f"INSTRUCTIONS:\n"
-                f"1. Complete all `// TODO` items across the files according to problem instructions.\n"
-                f"2. Return the completed code for each file in the `workspace_files` list, where each item has `filename` and `code`.\n"
-                f"3. PRESERVE EXISTING DECLARATIONS: Retain the exact class names, packages, and annotations present in each file's starter code.\n"
-                f"4. For Spring components, runners, and controllers, use field-level @Autowired injection on dependency fields (@Autowired private ServiceType serviceField;) without final modifiers, to satisfy automated evaluator checks.\n"
-                f"5. If a file contains @Test annotations or test TODOs, fulfill all test methods and preserve all test annotations and test imports.\n"
-                f"6. In the primary `code` field, include the primary completed service/runner file.\n"
-                f"7. Do NOT leave any TODO placeholders or incomplete methods.\n"
+                f"1. HIGHEST MANDATE — PROBLEM STATEMENT IS THE ABSOLUTE SPECIFICATION: Always give 100% priority to instructions given in the PROBLEM STATEMENT. If any in-code comment, javadoc, or TODO conflicts with the problem statement, the PROBLEM STATEMENT ALWAYS takes absolute precedence. Disregard any contradictory comment.\n"
+                f"2. Complete all missing methods and valid `// TODO` items across the files according to problem instructions.\n"
+                f"3. Return the completed code for each file in the `workspace_files` list, where each item has `filename` and `code`.\n"
+                f"4. PRESERVE EXISTING DECLARATIONS: Retain the exact class names, packages, and annotations present in each file's starter code.\n"
+                f"5. DEPENDENCY INJECTION & CONSTRUCTORS: Always give absolute priority to instructions in the problem statement. If the problem specifies field-level injection (e.g. '@Autowired'), annotate fields directly and do NOT write manual constructors. If constructor injection is specified, implement constructor injection. If unspecified, preserve starter code patterns. Never generate both field injection and constructor injection for the same dependency.\n"
+                f"6. If a file contains @Test annotations or test TODOs, fulfill all test methods and preserve all test annotations and test imports.\n"
+                f"7. In the primary `code` field, include the primary completed service/runner file.\n"
+                f"8. Do NOT leave any TODO placeholders or incomplete methods.\n"
             )
 
         system_prompt = load_prompt_template(
@@ -187,37 +195,27 @@ class SolutionGeneratorService:
         # Field-level @Autowired healing and final stripping for Java solutions
         if solution and problem.selected_language and problem.selected_language.lower() in ("java", "generic"):
             def _heal_autowired(src: str) -> str:
-                # 1. Strip 'final' from @Autowired fields
-                src = re.sub(
+                # Strip illegal 'final' from @Autowired fields
+                return re.sub(
                     r"(@Autowired\s*\n?\s*private)\s+final\s+([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+);",
                     r"\1 \2 \3;",
                     src,
                 )
-                # 2. Generic Spring Component/Runner Field-Level Injection Healing
-                if bool(re.search(r"@(?:Component|Service|RestController|Controller|Repository)\b|implements\s+CommandLineRunner", src)):
-                    class_match = re.search(r"\bpublic\s+class\s+([A-Za-z0-9_]+)\b", src)
-                    if class_match:
-                        c_name = class_match.group(1)
-                        single_ctor = re.search(
-                            r"\n[ \t]*(?:@Autowired[ \t]*\n[ \t]*)?public\s+" + re.escape(c_name) + r"\s*\(\s*([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*\)\s*\{[ \t\n]*this\.\2\s*=\s*\2;\s*\}",
-                            src,
-                        )
-                        if single_ctor:
-                            d_type = single_ctor.group(1)
-                            d_name = single_ctor.group(2)
-                            f_pattern = re.compile(rf"(\n[ \t]*)private\s+(?:final\s+)?{re.escape(d_type)}\s+{re.escape(d_name)};")
-                            if f_pattern.search(src):
-                                if not re.search(rf"@Autowired[ \t\n]+private\s+(?:final\s+)?{re.escape(d_type)}\s+{re.escape(d_name)};", src):
-                                    src = f_pattern.sub(rf"\1@Autowired\1private {d_type} {d_name};", src, count=1)
-                                src = src[:single_ctor.start()] + src[single_ctor.end():]
-                                if "import org.springframework.beans.factory.annotation.Autowired;" not in src and "import org.springframework." in src:
-                                    src = re.sub(r"(package\s+[a-zA-Z0-9_\.]+;\n\n?)", r"\1import org.springframework.beans.factory.annotation.Autowired;\n", src)
-                return src
 
             solution.code = _heal_autowired(solution.code)
             if solution.workspace_files:
                 for wf in solution.workspace_files:
                     wf.code = _heal_autowired(wf.code)
+
+        # Starter code asset fidelity healing (retains predefined helper methods & collections)
+        if problem.starter_code:
+            solution.code = StarterFidelityEngine.heal_missing_assets(
+                solution.code, problem.starter_code, language=problem.selected_language
+            )
+
+        # Ensure no unit test annotations leaked into single-file production solutions
+        if problem.selected_language.lower() in ("java", "csharp", "cs") and not any(k in (problem.title or "").lower() for k in ("test", "tests", "testcase")):
+            solution.code = StarterFidelityEngine.strip_test_methods(solution.code)
 
         # Static response quality validation
         _, warnings = ResponseValidator.validate_solution(solution, problem.selected_language)
@@ -292,6 +290,10 @@ class SolutionGeneratorService:
                 or "/tests/" in fname.lower()
             )
 
+            fidelity_directives = StarterFidelityEngine.build_fidelity_prompt_directives(
+                orig_code, language=file_lang, filename=fname
+            )
+
             if is_test_file:
                 test_class_match = re.search(r"\b(?:public\s+)?class\s+([A-Za-z0-9_]*Test[A-Za-z0-9_]*)\b", orig_code)
                 effective_test_class = test_class_match.group(1) if test_class_match else target_class
@@ -300,7 +302,15 @@ class SolutionGeneratorService:
                 compile_rule = "4. TEST FRAMEWORK INTEGRITY: Preserve all @Test annotations, @SpringBootTest, @AutoConfigureMockMvc, MockMvc injection, and org.junit.* / Spring test imports. Never omit or strip test annotations!"
             else:
                 class_rule = f"2. CLASS NAME INTEGRITY: The class inside '{fname}' MUST be named exactly '{target_class}'. NEVER declare another class (e.g. if file is {fname}, declare public class {target_class}, NEVER a Controller or Test class)."
-                role_rule = f"3. STRICT ROLE ISOLATION: If '{fname}' is a Service or Component, declare @Service or @Component. For dependency injection, use field-level @Autowired injection (e.g. @Autowired private ServiceType serviceField;) without final modifiers, to satisfy automated evaluators requiring field-level injection. NEVER put @RestController or HTTP endpoints in a Service. If '{fname}' is a Model, implement only fields, getters, setters, and constructors."
+                role_rule = (
+                    f"3. STRICT ROLE & INJECTION FIDELITY: If '{fname}' is a Service or Component, declare appropriate framework annotations (@Service, @Component). "
+                    f"Always give absolute priority to instructions in the problem statement. "
+                    f"If field-level injection is specified (e.g. '@Autowired'), annotate the field directly and do NOT write a constructor manually. "
+                    f"If constructor injection is specified, implement constructor injection. "
+                    f"Never mix both field injection and constructor injection for the same dependency. "
+                    f"NEVER put @RestController or HTTP endpoints in a Service. "
+                    f"If '{fname}' is a Model/Entity, implement only required fields, getters, setters, and constructors."
+                )
                 compile_rule = f"4. CRITICAL COMPILE SAFETY: This file compiles in the production source tree (src/main/). NEVER include test framework imports or annotations (@SpringBootTest, MockMvc, @Test, org.junit.*, jest, vitest) inside this file."
 
             file_prompt = (
@@ -311,15 +321,25 @@ class SolutionGeneratorService:
                 f"EXISTING FILE CONTENT FOR '{fname}':\n"
                 f"```{file_lang}\n{orig_code}\n```\n\n"
                 f"STRICT ENGINEERING INSTRUCTIONS:\n"
-                f"1. Fulfill all `// TODO` items and missing methods/components in '{fname}'.\n"
+                f"1. HIGHEST MANDATE — PROBLEM STATEMENT IS THE ABSOLUTE SPECIFICATION: Always give 100% priority to instructions given in the PROBLEM STATEMENT. If any in-code comment, javadoc, or TODO conflicts with the problem statement (e.g. a TODO suggests constructor injection, but the problem statement instructs @Autowired field injection, or vice-versa), the PROBLEM STATEMENT ALWAYS WINS. Disregard any contradictory comment.\n"
+                f"2. Fulfill all requirements, missing methods, and valid TODO items in '{fname}' strictly adhering to problem instructions.\n"
                 f"{class_rule}\n"
                 f"{role_rule}\n"
                 f"{compile_rule}\n"
+                f"{fidelity_directives}\n"
                 f"5. Return ONLY the complete, ready-to-run source code for '{fname}'. Do NOT output conversational filler, just the code inside ```{file_lang} ```."
             )
 
+            system_prompt = (
+                f"You are an expert {framework_desc} engineer.\n"
+                "AUTHORITY HIERARCHY (PROBLEM STATEMENT > IN-CODE COMMENTS):\n"
+                "1. The PROBLEM STATEMENT is the absolute authoritative specification. Always implement what the problem statement requires.\n"
+                "2. If any starter code comment, javadoc, or TODO contradicts the problem statement (e.g. a TODO tells you to replace an injection style, but the problem statement instructs @Autowired field injection), YOU MUST OBEY THE PROBLEM STATEMENT AND DISREGARD THE CONFLICTING TODO.\n"
+                "3. Output pure, production-grade, compilable source code."
+            )
+
             try:
-                res = await provider.generate_text(file_prompt)
+                res = await provider.generate_text(file_prompt, system_prompt=system_prompt)
                 extracted_code = cls._extract_code(res)
                 if extracted_code and len(extracted_code.strip()) > 20:
                     code = extracted_code.strip()
@@ -338,23 +358,13 @@ class SolutionGeneratorService:
                                     )
                             code = re.sub(r"import\s+org\.junit[^\n]+;\n?", "", code)
                             code = re.sub(r"import\s+org\.springframework\.boot\.test[^\n]+;\n?", "", code)
-                            code = re.sub(r"@Test\s*\n\s*(?:public\s+|void\s+)[^}]+\}\n?", "", code, flags=re.DOTALL)
+                            code = StarterFidelityEngine.strip_test_methods(code)
                             code = re.sub(r"@(?:SpringBootTest|WebMvcTest|AutoConfigureMockMvc)\b[^\n]*\n?", "", code)
                         code = re.sub(
                             r"(@Autowired\s*\n?\s*private)\s+final\s+([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+);",
                             r"\1 \2 \3;",
                             code,
                         )
-                        open_b = code.count('{')
-                        close_b = code.count('}')
-                        if open_b > close_b:
-                            code = code.rstrip() + "\n" + ("}" * (open_b - close_b)) + "\n"
-                        elif close_b > open_b:
-                            excess = close_b - open_b
-                            while excess > 0 and code.rstrip().endswith("}"):
-                                idx = code.rfind("}")
-                                code = code[:idx] + code[idx+1:]
-                                excess -= 1
                     completed_files[fname] = code
                 else:
                     completed_files[fname] = orig_code

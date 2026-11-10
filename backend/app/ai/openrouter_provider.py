@@ -27,8 +27,9 @@ class OpenRouterProvider(AIProvider):
         model_name: Optional[str] = None,
         base_url: Optional[str] = None,
     ):
-        self._api_key = api_key or settings.OPENROUTER_API_KEY or settings.AI_API_KEY
-        raw_model = model_name or settings.OPENROUTER_MODEL or "openrouter/free"
+        raw_key = api_key.strip() if (api_key and isinstance(api_key, str)) else None
+        self._api_key = raw_key or settings.OPENROUTER_API_KEY or settings.AI_API_KEY
+        raw_model = model_name or settings.OPENROUTER_MODEL or "anthropic/claude-3.5-sonnet"
         # Remap discontinued or deprecated OpenRouter free slugs
         if "llama-3.2-3b-instruct:free" in raw_model or "llama-3.2-1b-instruct:free" in raw_model:
             raw_model = "openrouter/free"
@@ -97,8 +98,17 @@ class OpenRouterProvider(AIProvider):
             raise RuntimeError("OpenRouter rate limit exceeded (HTTP 429).")
 
         if response.status_code != 200:
-            logger.error(f"OpenRouter error {response.status_code}: {response.text}")
-            raise RuntimeError(f"OpenRouter API responded with HTTP {response.status_code}")
+            err_msg = response.text
+            try:
+                err_json = response.json()
+                if "error" in err_json and isinstance(err_json["error"], dict):
+                    err_msg = err_json["error"].get("message", err_msg)
+                elif "error" in err_json:
+                    err_msg = str(err_json["error"])
+            except Exception:
+                pass
+            logger.error(f"OpenRouter error {response.status_code}: {err_msg}")
+            raise RuntimeError(f"OpenRouter API error (HTTP {response.status_code}): {err_msg}")
 
         data = response.json()
         try:
@@ -182,7 +192,7 @@ class OpenRouterProvider(AIProvider):
                 "provider": self.provider_name,
                 "model": self.model_name,
                 "is_mock": False,
-                "error": "OpenRouter API key is not configured. Add your key in Settings > Bring Your Own Key.",
+                "error": "OpenRouter API key is not configured. Please enter your API key in Settings.",
             }
 
         try:
@@ -194,12 +204,12 @@ class OpenRouterProvider(AIProvider):
                 "is_mock": False,
                 "sample_response": test_resp[:20].strip(),
             }
-        except Exception as e:
+        except Exception:
             return {
                 "available": False,
                 "provider": self.provider_name,
                 "model": self.model_name,
                 "is_mock": False,
-                "error": str(e),
+                "error": "Unable to reach OpenRouter servers. Please verify your API key and connection.",
             }
 

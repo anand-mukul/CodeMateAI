@@ -1,19 +1,17 @@
 import React from 'react';
-import { RefreshCw, FileCode } from 'lucide-react';
+import { FileCode } from 'lucide-react';
 import { ProblemContext } from '../types/problem';
 
 interface ProblemCardProps {
   problem: ProblemContext | null;
   isSupported: boolean;
-  onRefresh: () => void;
-  isLoading: boolean;
+  onRefresh?: () => void;
+  isLoading?: boolean;
 }
 
 export const ProblemCard: React.FC<ProblemCardProps> = ({
   problem,
   isSupported,
-  onRefresh,
-  isLoading,
 }) => {
   if (!problem || !isSupported) {
     return (
@@ -38,23 +36,13 @@ export const ProblemCard: React.FC<ProblemCardProps> = ({
 
   return (
     <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex flex-col gap-1.5 shadow-xs">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-start gap-2 min-w-0">
-          <div className="p-1 rounded bg-slate-800 text-slate-400 shrink-0 mt-0.5">
-            <FileCode className="w-3.5 h-3.5 text-indigo-400" />
-          </div>
-          <h2 className="text-xs font-semibold text-white tracking-tight line-clamp-2 leading-snug">
-            {problem.problemTitle || problem.problemCode || 'Practice Problem'}
-          </h2>
+      <div className="flex items-start gap-2 min-w-0">
+        <div className="p-1 rounded bg-slate-800 text-slate-400 shrink-0 mt-0.5">
+          <FileCode className="w-3.5 h-3.5 text-indigo-400" />
         </div>
-        <button
-          onClick={onRefresh}
-          disabled={isLoading}
-          className="p-1 text-slate-400 hover:text-slate-200 rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50 shrink-0 cursor-pointer"
-          title="Refresh problem"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-        </button>
+        <h2 className="text-xs font-semibold text-white tracking-tight line-clamp-2 leading-snug">
+          {problem.problemTitle || problem.problemCode || 'Practice Problem'}
+        </h2>
       </div>
 
       <div className="flex items-center gap-1.5 text-[11px] text-slate-400 pl-7">

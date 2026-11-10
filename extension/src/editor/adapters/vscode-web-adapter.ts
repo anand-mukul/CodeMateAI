@@ -177,11 +177,45 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
   }
 
   public isMultiFileWorkspace(): boolean {
+    if (!document.querySelector('.monaco-workbench')) return false;
+
     const openTabs = document.querySelectorAll('.tabs-container .tab, .tab[role="tab"]');
-    return !!(
-      document.querySelector('.monaco-workbench') &&
-      openTabs.length >= 2
+    if (openTabs.length >= 2) return true;
+
+    // Check if explorer tree has multiple source code files even if unopened in tabs
+    const CODE_EXT_REGEX = /\.(java|py|cpp|cc|c|h|hpp|js|jsx|ts|tsx|html|css|json|xml|sql|properties|gradle|kt|swift|rb|go|rs|php)$/i;
+    const treeRows = Array.from(document.querySelectorAll('.monaco-list-row')) as HTMLElement[];
+    const sourceRows = treeRows.filter((r) => {
+      const rawName = (r.getAttribute('aria-label') || r.innerText.trim()).split(' ')[0];
+      const name = this.normalizeName(rawName);
+      const isFolder =
+        r.classList.contains('expanded') ||
+        r.classList.contains('collapsed') ||
+        r.getAttribute('aria-expanded') !== null;
+      return !isFolder && CODE_EXT_REGEX.test(name);
+    });
+
+    if (sourceRows.length >= 2) return true;
+
+    // Check if Monaco models already contain multiple source files
+    const monaco = this.getMonaco();
+    if (monaco && typeof monaco.editor?.getModels === 'function') {
+      try {
+        const models = monaco.editor.getModels().filter((m: any) => {
+          const p = m.uri?.path || m.uri?.toString() || '';
+          return CODE_EXT_REGEX.test(p);
+        });
+        if (models.length >= 2) return true;
+      } catch {}
+    }
+
+    // Check if breadcrumbs trail indicates a multi-directory package hierarchy
+    const breadcrumbItems = document.querySelectorAll(
+      '.breadcrumbs-control .monaco-breadcrumb-item, .monaco-breadcrumbs [role="listitem"]'
     );
+    if (breadcrumbItems.length >= 3) return true;
+
+    return false;
   }
 
   public getActiveTextarea(): HTMLTextAreaElement | null {
@@ -431,8 +465,8 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
             }
           }
 
-          // Priority B: Search by active tab
-          if (!targetModel) {
+          // Priority B: Search by active tab (only if targetFilename matches activeTab or no targetFilename specified)
+          if (!targetModel && (!targetFilename || (this.getActiveTab() && this.isMatchingFile(this.getActiveTab()!, targetFilename)))) {
             const activeTab = this.getActiveTab();
             if (activeTab) {
               targetModel = models.find((m: any) => {
@@ -442,9 +476,12 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
             }
           }
 
-          // Priority C: If only 1 model in workspace, use it
+          // Priority C: If only 1 model in workspace, use it ONLY if no targetFilename or matches targetFilename
           if (!targetModel && models.length === 1) {
-            targetModel = models[0];
+            const singlePath = models[0].uri?.path || models[0].uri?.toString() || '';
+            if (!targetFilename || this.isMatchingFile(singlePath, targetFilename)) {
+              targetModel = models[0];
+            }
           }
 
           if (targetModel) {
@@ -495,7 +532,7 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
             return this.isMatchingFile(p, targetFilename);
           });
         }
-        if (!ed) {
+        if (!ed && !targetFilename) {
           ed = editors.find((e: any) => e.hasTextFocus?.()) || editors[0];
         }
 
@@ -525,6 +562,24 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
     }
 
     // 3. Third Priority: DOM-level Wipe & Insert with Atomic Fallback
+    // Safety guard: Ensure active editor tab matches targetFilename before touching DOM
+    const curActiveTab = this.getActiveTab();
+    if (targetFilename && curActiveTab && !this.isMatchingFile(curActiveTab, targetFilename)) {
+      console.error(
+        `[CodeMate AI] SAFETY GUARD: Active editor '${curActiveTab}' does not match target '${targetFilename}'. Aborting DOM insertion to prevent file contamination!`
+      );
+      return {
+        success: false,
+        error: `Active editor '${curActiveTab}' does not match target '${targetFilename}'`,
+        errorCode: 'TARGET_MISMATCH',
+        mode,
+        initialLength: initialLen,
+        newLength: initialLen,
+        lines: 0,
+        verified: false,
+      };
+    }
+
     textarea.focus();
     const isMac = navigator.platform.toUpperCase().includes('MAC');
     const selectAllEvt = new KeyboardEvent('keydown', {
@@ -818,16 +873,18 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
       .pop()
       ?.trim() || '';
 
-    // Remove aria-label ", tab"
-    clean = clean.replace(/,\s*tab\s*$/i, '');
+    // Remove aria-label ", tab", ", file", ", Java", etc.
+    clean = clean.replace(/,\s*(?:tab|file|java|class|document|folder)?\s*$/i, '');
+    clean = clean.replace(/[,;]+$/, '');
     // Remove dirty dot indicator
     clean = clean.replace(/[\u25cf\u2022\*\.]\s*$/g, '');
-    // Remove close button symbol (×, ✕, ✖, ⨉) - preserve literal letters 'x' / 'X'
+    // Remove close button symbol (×, ✕, ✖, ⨉) or whitespace-separated close button 'x'/'X'
     clean = clean.replace(/[\u00d7\u2715\u2716\u2a09]\s*$/g, '');
+    clean = clean.replace(/[\s\t]+[xX]$/g, '');
     // Remove non-standard whitespace
     clean = clean.replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ');
-    // Remove single icon prefix letter (Seti / Codicon icon font artifact, e.g. "JStudent.java" -> "Student.java")
-    clean = clean.replace(/^[a-zA-Z\uE000-\uF8FF](?=[A-Z][a-zA-Z0-9_]*\.[a-zA-Z0-9]+$)/, '');
+    // Strip leading icon font glyphs (Private Use Area & symbols) without eating valid ASCII filename letters!
+    clean = clean.replace(/^[\uE000-\uF8FF\u2000-\u2BFF\s]+/, '');
     return clean.trim().toLowerCase();
   }
 
@@ -837,23 +894,25 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
     const normB = this.normalizeName(b);
     if (normA === normB) return true;
 
-    // Basename comparison (e.g. "model/Student.java" vs "Student.java")
+    // Direct comparison of normalized basenames
     const baseA = normA.split('/').pop()?.split('\\').pop() || normA;
     const baseB = normB.split('/').pop()?.split('\\').pop() || normB;
     if (baseA === baseB) return true;
 
-    // Extension-less comparison (e.g. "Student" vs "Student.java")
-    const noExtA = baseA.replace(/\.[a-z0-9]+$/i, '');
-    const noExtB = baseB.replace(/\.[a-z0-9]+$/i, '');
-    if (noExtA === noExtB) return true;
+    // Path suffix comparison with strict slash separator (e.g. ".../com/example/demo/student.java" vs "demo/student.java")
+    const slashA = normA.replace(/\\/g, '/');
+    const slashB = normB.replace(/\\/g, '/');
+    if (slashA.endsWith('/' + slashB) || slashB.endsWith('/' + slashA)) {
+      return true;
+    }
 
-    // Suffix match tolerance for leading icon font glyphs (e.g. "jstudent.java" vs "student.java")
-    if (baseA.endsWith(baseB) || baseB.endsWith(baseA)) {
-      const longer = baseA.length > baseB.length ? baseA : baseB;
-      const shorter = baseA.length > baseB.length ? baseB : baseA;
-      if (longer.endsWith(shorter) && longer.length - shorter.length <= 4) {
-        return true;
-      }
+    // Extension-less comparison ONLY if one side lacks an extension (e.g. "Student" vs "Student.java")
+    const hasExtA = /\.[a-z0-9]+$/i.test(baseA);
+    const hasExtB = /\.[a-z0-9]+$/i.test(baseB);
+    if (hasExtA !== hasExtB) {
+      const noExtA = baseA.replace(/\.[a-z0-9]+$/i, '');
+      const noExtB = baseB.replace(/\.[a-z0-9]+$/i, '');
+      if (noExtA && noExtB && noExtA === noExtB) return true;
     }
 
     return false;
@@ -870,8 +929,9 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
     clean = clean.replace(/,\s*tab\s*$/i, '');
     clean = clean.replace(/[\u25cf\u2022\*]\s*$/g, '');
     clean = clean.replace(/[\u00d7\u2715\u2716\u2a09]\s*$/g, '');
+    clean = clean.replace(/[\s\t]+[xX]$/g, '');
     clean = clean.replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ');
-    clean = clean.replace(/^[a-zA-Z\uE000-\uF8FF](?=[A-Z][a-zA-Z0-9_]*\.[a-zA-Z0-9]+$)/, '');
+    clean = clean.replace(/^[\uE000-\uF8FF\u2000-\u2BFF\s]+/, '');
     return clean.trim();
   }
 
@@ -1083,7 +1143,20 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
       }
     }
 
-    // Layer 3: Workspace Explorer Tree Fallback
+    // Layer 3: Breadcrumbs Picker Fallback (for unopened sibling files)
+    const openedFromBreadcrumbs = await this.openFileViaBreadcrumbs(fileName);
+    if (openedFromBreadcrumbs) {
+      await new Promise((r) => setTimeout(r, 200));
+      const finalActive = this.normalizeName(this.getActiveTab() || '');
+      if (
+        finalActive === targetClean ||
+        finalActive.replace(/\.[a-z0-9]+$/i, '') === targetClean.replace(/\.[a-z0-9]+$/i, '')
+      ) {
+        return true;
+      }
+    }
+
+    // Layer 4: Workspace Explorer Tree Fallback
     console.warn(`[CodeMate AI] Direct tab click did not activate ${fileName}, falling back to Explorer tree...`);
     const openedFromTree = await this.openWorkspaceFile(fileName);
     if (openedFromTree) {
@@ -1098,11 +1171,172 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
     return false;
   }
 
+  private dispatchDomClick(el: HTMLElement): void {
+    const rect = el.getBoundingClientRect();
+    const x = rect.left > 0 ? rect.left + rect.width / 2 : window.innerWidth / 2;
+    const y = rect.top > 0 ? rect.top + rect.height / 2 : 100;
+    const win = el.ownerDocument?.defaultView || window;
+    const mouseOpts = { bubbles: true, cancelable: true, view: win, clientX: x, clientY: y, button: 0, buttons: 1, which: 1 };
+    const pointerOpts = { ...mouseOpts, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+
+    el.dispatchEvent(new PointerEvent('pointerdown', pointerOpts));
+    el.dispatchEvent(new MouseEvent('mousedown', mouseOpts));
+    el.dispatchEvent(new PointerEvent('pointerup', { ...pointerOpts, buttons: 0 }));
+    el.dispatchEvent(new MouseEvent('mouseup', { ...mouseOpts, buttons: 0 }));
+    el.dispatchEvent(new MouseEvent('click', { ...mouseOpts, buttons: 0 }));
+    try { el.click(); } catch {}
+  }
+
+  private closeBreadcrumbsPicker(): void {
+    const esc = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      code: 'Escape',
+      keyCode: 27,
+      which: 27,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(esc);
+    document.dispatchEvent(esc);
+    (document.activeElement as HTMLElement | null)?.dispatchEvent?.(esc);
+  }
+
+  private getRowFileName(row: HTMLElement): string {
+    const labelEl = row.querySelector('.label-name, .monaco-icon-label-name, .monaco-icon-label') as HTMLElement | null;
+    const rawText = labelEl?.innerText?.trim() || row.getAttribute('aria-label')?.split(',')[0]?.trim() || row.innerText?.trim() || '';
+    return this.normalizeName(rawText);
+  }
+
+  /**
+   * Opens an unopened sibling file via the VS Code breadcrumbs picker dropdown.
+   */
+  public async openFileViaBreadcrumbs(fileName: string): Promise<boolean> {
+    const targetClean = this.normalizeName(fileName);
+    if (!targetClean) return false;
+
+    const curActive = this.normalizeName(this.getActiveTab() || '');
+    if (this.isMatchingFile(curActive, targetClean)) return true;
+
+    const breadcrumbItems = Array.from(
+      document.querySelectorAll(
+        '.breadcrumbs-control .monaco-breadcrumb-item, .monaco-breadcrumbs [role="listitem"], .monaco-breadcrumb-item'
+      )
+    ) as HTMLElement[];
+    if (breadcrumbItems.length === 0) return false;
+
+    const trigger = breadcrumbItems[breadcrumbItems.length - 1];
+    this.dispatchDomClick(trigger);
+    await new Promise((r) => setTimeout(r, 150));
+
+    let picker = document.querySelector('.monaco-breadcrumbs-picker');
+    if (!picker && breadcrumbItems.length >= 2) {
+      const folderTrigger = breadcrumbItems[breadcrumbItems.length - 2];
+      this.dispatchDomClick(folderTrigger);
+      await new Promise((r) => setTimeout(r, 150));
+      picker = document.querySelector('.monaco-breadcrumbs-picker');
+    }
+
+    if (!picker) return false;
+
+    const rows = Array.from(picker.querySelectorAll('.monaco-list-row')) as HTMLElement[];
+    let targetRow: HTMLElement | null = null;
+    for (const r of rows) {
+      const rName = this.getRowFileName(r);
+      if (this.isMatchingFile(rName, targetClean)) {
+        targetRow = r;
+        break;
+      }
+    }
+
+    if (targetRow) {
+      this.dispatchDomClick(targetRow);
+      await new Promise((r) => setTimeout(r, 250));
+      this.closeBreadcrumbsPicker();
+      return true;
+    }
+
+    this.closeBreadcrumbsPicker();
+    return false;
+  }
+
+  /**
+   * Auto-discovers and opens unopened sibling source files via VS Code Breadcrumbs picker.
+   * Breadcrumbs (.breadcrumbs-control) are located in .part.editor and remain active
+   * even when the Explorer sidebar is collapsed (0px width) in CodeChef's split layout.
+   */
+  public async autoDiscoverViaBreadcrumbs(): Promise<string[]> {
+    const CODE_EXT_REGEX = /\.(java|py|cpp|cc|c|h|hpp|js|jsx|ts|tsx|html|css|json|xml|sql|properties|gradle|kt|swift|rb|go|rs|php)$/i;
+    const openedFiles: string[] = [];
+
+    const breadcrumbsBar = document.querySelector('.breadcrumbs-control, .monaco-breadcrumbs');
+    if (!breadcrumbsBar) return openedFiles;
+
+    const getTrigger = (): HTMLElement | null => {
+      const items = Array.from(
+        document.querySelectorAll(
+          '.breadcrumbs-control .monaco-breadcrumb-item, .monaco-breadcrumbs [role="listitem"], .monaco-breadcrumb-item'
+        )
+      ) as HTMLElement[];
+      return items.length > 0 ? items[items.length - 1] : null;
+    };
+
+    // Up to 15 iterations to discover unopened sibling files
+    for (let iter = 0; iter < 15; iter++) {
+      const openTabs = this.getOpenTabs();
+      const openNames = new Set(openTabs.map((t) => this.normalizeName(t.fileName).toLowerCase()));
+
+      const trigger = getTrigger();
+      if (!trigger) break;
+
+      this.dispatchDomClick(trigger);
+      await new Promise((r) => setTimeout(r, 150));
+
+      const picker = document.querySelector('.monaco-breadcrumbs-picker');
+      if (!picker) break;
+
+      const rows = Array.from(picker.querySelectorAll('.monaco-list-row')) as HTMLElement[];
+      if (rows.length === 0) {
+        this.closeBreadcrumbsPicker();
+        await new Promise((r) => setTimeout(r, 60));
+        break;
+      }
+
+      let unopenedRow: HTMLElement | null = null;
+      let unopenedName = '';
+
+      for (const row of rows) {
+        const normName = this.getRowFileName(row);
+        if (CODE_EXT_REGEX.test(normName) && !openNames.has(normName.toLowerCase())) {
+          unopenedRow = row;
+          unopenedName = normName;
+          break;
+        }
+      }
+
+      if (!unopenedRow) {
+        this.closeBreadcrumbsPicker();
+        await new Promise((r) => setTimeout(r, 60));
+        break;
+      }
+
+      console.log(`[CodeMate AI] Auto-opening sibling project file via breadcrumbs: ${unopenedName}`);
+      this.dispatchDomClick(unopenedRow);
+      openedFiles.push(unopenedName);
+      await new Promise((r) => setTimeout(r, 250));
+    }
+
+    this.closeBreadcrumbsPicker();
+    return openedFiles;
+  }
+
   public getWorkspaceFiles(): WorkspaceTreeFile[] {
     const rows = Array.from(document.querySelectorAll('.monaco-list-row')) as HTMLElement[];
     return rows.map((r) => {
-      const rawName = (r.getAttribute('aria-label') || r.innerText.trim()).split(' ')[0];
-      const name = this.normalizeName(rawName);
+      const labelNameEl = r.querySelector('.label-name, .monaco-icon-label-name') as HTMLElement | null;
+      const labelText = labelNameEl?.innerText?.trim() || '';
+      const ariaLabel = r.getAttribute('aria-label') || '';
+      const rawText = labelText || ariaLabel.split(',')[0].trim() || r.innerText.trim().split('\n')[0].trim();
+      const name = this.normalizeName(rawText);
       const iconLabel = r.querySelector('.monaco-icon-label');
       const fullPath = iconLabel?.getAttribute('aria-label') || undefined;
       const isFolder =
@@ -1169,15 +1403,58 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
   }
 
   public async harvestAllOpenFiles(): Promise<Record<string, string>> {
-    const tabs = this.getOpenTabs();
-    // If there is only 1 or 0 open tabs, strictly return single active file
-    if (tabs.length <= 1) {
+    const CODE_EXT_REGEX = /\.(java|py|cpp|cc|c|h|hpp|js|jsx|ts|tsx|html|css|json|xml|sql|properties|gradle|kt|swift|rb|go|rs|php)$/i;
+
+    // Step 0A: Auto-discover unopened sibling files via Breadcrumbs picker
+    // (Crucial for CodeChef where the Explorer sidebar is collapsed to 0px width by default)
+    try {
+      await this.autoDiscoverViaBreadcrumbs();
+    } catch (e) {
+      console.warn('[CodeMate AI] Breadcrumbs auto-discovery notice:', e);
+    }
+
+    // Step 0B: Check Explorer tree for unopened project files (if Explorer sidebar is open)
+    let tabs = this.getOpenTabs();
+    let openNames = new Set(tabs.map((t) => this.normalizeName(t.fileName).toLowerCase()));
+
+    const treeFiles = this.getWorkspaceFiles().filter(
+      (f) => !f.isFolder && CODE_EXT_REGEX.test(f.name)
+    );
+
+    const unopenedTreeFiles = treeFiles.filter((f) => {
+      const norm = this.normalizeName(f.name).toLowerCase();
+      if (norm.startsWith('.') || norm.endsWith('.log') || norm.endsWith('.xml') || norm.endsWith('.md')) {
+        return false;
+      }
+      return !openNames.has(norm);
+    });
+
+    if (unopenedTreeFiles.length > 0) {
+      console.log(
+        `[CodeMate AI] Auto-discovering ${unopenedTreeFiles.length} unopened workspace files from Explorer tree:`,
+        unopenedTreeFiles.map((f) => f.name)
+      );
+      for (const uf of unopenedTreeFiles) {
+        try {
+          await this.openWorkspaceFile(uf.name);
+          await new Promise((r) => setTimeout(r, 250));
+        } catch (err) {
+          console.warn(`[CodeMate AI] Failed to auto-open ${uf.name}:`, err);
+        }
+      }
+      tabs = this.getOpenTabs();
+      openNames = new Set(tabs.map((t) => this.normalizeName(t.fileName).toLowerCase()));
+    }
+
+    // If there is only 1 or 0 open tabs AND no multi-file tree files, strictly return single active file
+    if (tabs.length <= 1 && treeFiles.length <= 1) {
       const activeName = this.getActiveTab() || 'main';
       const activeCode = this.getValue();
       return { [activeName]: activeCode };
     }
 
     const tabNameSet = new Set(tabs.map((t) => this.normalizeName(t.fileName).toLowerCase()));
+    const fileBundle: Record<string, string> = {};
 
     // 1. Direct Monaco model harvest if accessible, filtered strictly by visible open tabs
     const monaco = this.getMonaco();
@@ -1185,21 +1462,16 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
       try {
         const models = monaco.editor.getModels();
         if (models && models.length > 0) {
-          const files: Record<string, string> = {};
           for (const m of models) {
             const rawPath = m.uri?.path || m.uri?.toString() || '';
             const baseName = rawPath.split('/').pop() || '';
             const normalized = this.normalizeName(baseName).toLowerCase();
-            // ONLY accept models that correspond to a currently open visible tab!
             if (tabNameSet.has(normalized)) {
               const val = m.getValue();
               if (val && val.trim().length > 0) {
-                files[baseName] = val;
+                fileBundle[baseName] = val;
               }
             }
-          }
-          if (Object.keys(files).length >= 2) {
-            return files;
           }
         }
       } catch (e) {
@@ -1207,24 +1479,28 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
       }
     }
 
-    // 2. Fallback: DOM tab switching across visible tabs
-    const fileBundle: Record<string, string> = {};
-    const originalTab = this.getActiveTab();
+    // 2. Identify any tabs that are missing or empty in fileBundle (e.g. lazy-loaded background tabs)
+    const missingTabs = tabs.filter((t) => {
+      const norm = this.normalizeName(t.fileName).toLowerCase();
+      return !Object.keys(fileBundle).some((k) => this.normalizeName(k).toLowerCase() === norm);
+    });
 
-    for (const tab of tabs) {
-      const switched = await this.switchTab(tab.fileName);
-      if (switched) {
-        const code = this.getValue();
-        if (code && code.trim().length > 0) {
-          const key = tab.fullPath || tab.displayName || tab.fileName;
-          fileBundle[key] = code;
+    if (missingTabs.length > 0) {
+      const originalTab = this.getActiveTab();
+      for (const tab of missingTabs) {
+        const switched = await this.switchTab(tab.fileName);
+        if (switched) {
+          await new Promise((r) => setTimeout(r, 120));
+          const code = this.getValue();
+          if (code && code.trim().length > 0) {
+            const key = tab.fullPath || tab.displayName || tab.fileName;
+            fileBundle[key] = code;
+          }
         }
       }
-    }
-
-    // Restore active tab to original
-    if (originalTab) {
-      await this.switchTab(originalTab);
+      if (originalTab) {
+        await this.switchTab(originalTab);
+      }
     }
 
     if (Object.keys(fileBundle).length > 0) {
@@ -1266,13 +1542,9 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
       try {
         const models = monaco.editor.getModels();
         for (const [fileName, code] of Object.entries(fileMap)) {
-          const targetClean = this.normalizeName(fileName);
-          const targetNoExt = targetClean.replace(/\.[a-z0-9]+$/i, '');
-
           const model = models.find((m: any) => {
             const path = m.uri?.path || m.uri?.toString() || '';
-            const name = this.normalizeName(path);
-            return name === targetClean || name.replace(/\.[a-z0-9]+$/i, '') === targetNoExt;
+            return this.isMatchingFile(path, fileName);
           });
 
           if (model) {
@@ -1297,7 +1569,6 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
     // 2. High-precision DOM Tab Switching Fallback for remaining files
     const remainingFiles = Object.entries(fileMap).filter(([fn]) => !updatedFiles.includes(fn));
     for (const [fileName, code] of remainingFiles) {
-      const targetClean = this.normalizeName(fileName);
       let opened = await this.openWorkspaceFile(fileName);
       if (!opened) {
         opened = await this.switchTab(fileName);
@@ -1311,11 +1582,7 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
       let activeTab = this.getActiveTab();
       let poll = 0;
       while (poll < 6) {
-        if (
-          activeTab &&
-          (this.normalizeName(activeTab) === targetClean ||
-           this.normalizeName(activeTab).replace(/\.[a-z0-9]+$/i, '') === targetClean.replace(/\.[a-z0-9]+$/i, ''))
-        ) {
+        if (activeTab && this.isMatchingFile(activeTab, fileName)) {
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, 80));
@@ -1323,17 +1590,14 @@ export class VsCodeWebAdapter extends BaseEditorAdapter {
         poll++;
       }
 
-      const activeClean = activeTab ? this.normalizeName(activeTab) : '';
-      const isMatch =
-        activeClean === targetClean ||
-        activeClean.replace(/\.[a-z0-9]+$/i, '') === targetClean.replace(/\.[a-z0-9]+$/i, '');
+      const isMatch = Boolean(activeTab && this.isMatchingFile(activeTab, fileName));
 
       if (!isMatch) {
         console.error(`[CodeMate AI] SAFETY GUARD: Active editor is '${activeTab}', expected '${fileName}'. Aborting insertion into wrong file to prevent file contamination!`);
         continue;
       }
 
-      const res = await this.insertText(code, 'replace');
+      const res = await this.insertText(code, 'replace', fileName);
       if (res.success) {
         updatedFiles.push(fileName);
       }

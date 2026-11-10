@@ -1,35 +1,32 @@
 /**
- * CodeMate AI — LangGraph.js Multi-File Project Orchestrator
+ * CodeMate AI — Multi-File Project Orchestrator
  * 
  * Manages stateful, sequential multi-file problem solving on CodeChef.
  * Integrates with the backend's Ephemeral Task Context Service (Upstash Redis, 15m TTL).
  * Prevents interface/contract drift by propagating entity schemas and REST endpoints across files.
  */
 
-import { Annotation } from "@langchain/langgraph";
 import { ExtensionMessagingService } from "./extension-messaging";
 import { CodeMateApiClient } from "./api";
 
-// 1. LangGraph State Annotation
-export const MultiFileAnnotation = Annotation.Root({
-  taskId: Annotation<string>(),
-  problemTitle: Annotation<string>(),
-  problemStatement: Annotation<string>(),
-  targetFramework: Annotation<string>(),
-  dependencyOrder: Annotation<string[]>(),
-  currentStepIndex: Annotation<number>(),
-  rawFiles: Annotation<Record<string, string>>(),
-  completedFiles: Annotation<Record<string, string>>(),
-  sharedContracts: Annotation<Record<string, any>>(),
-  stepSummaries: Annotation<string[]>(),
-  status: Annotation<"INITIALIZING" | "PROCESSING" | "INJECTING" | "COMPLETED" | "FAILED" | "CANCELLED">(),
-  currentFile: Annotation<string>(),
-  currentCode: Annotation<string>(),
-  currentExplanation: Annotation<string>(),
-  lastError: Annotation<string | null>(),
-});
-
-export type MultiFileState = typeof MultiFileAnnotation.State;
+// Stateful Multi-File Execution Interface
+export interface MultiFileState {
+  taskId: string;
+  problemTitle: string;
+  problemStatement: string;
+  targetFramework: string;
+  dependencyOrder: string[];
+  currentStepIndex: number;
+  rawFiles: Record<string, string>;
+  completedFiles: Record<string, string>;
+  sharedContracts: Record<string, any>;
+  stepSummaries: string[];
+  status: "INITIALIZING" | "PROCESSING" | "INJECTING" | "COMPLETED" | "FAILED" | "CANCELLED";
+  currentFile: string;
+  currentCode: string;
+  currentExplanation: string;
+  lastError: string | null;
+}
 
 export type StepProgressCallback = (
   step: number,

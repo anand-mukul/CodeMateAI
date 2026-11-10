@@ -75,10 +75,10 @@ export const PROVIDER_REGISTRY: Record<AIProviderId, ProviderConfig> = {
   anthropic: {
     id: 'anthropic',
     name: 'Claude',
-    enabled: false,
+    enabled: true,
     adapter: 'anthropic',
     keyRequired: true,
-    badge: 'Coming Soon',
+    badge: 'Available',
     docUrl: 'https://platform.claude.com/docs/en/home',
     models: [
       {
@@ -86,7 +86,15 @@ export const PROVIDER_REGISTRY: Record<AIProviderId, ProviderConfig> = {
         name: 'Claude 3.5 Sonnet',
         provider: 'anthropic',
         profile: 'advanced',
-        description: 'Industry-standard coding model with superior reasoning.',
+        description: 'Industry-standard coding model with superior reasoning and refactoring depth.',
+        capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 8192 }
+      },
+      {
+        id: 'claude-3-7-sonnet-20250219',
+        name: 'Claude 3.7 Sonnet',
+        provider: 'anthropic',
+        profile: 'advanced',
+        description: 'Anthropic hybrid reasoning model for hard algorithms and complex logic.',
         capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 8192 }
       },
       {
@@ -94,7 +102,7 @@ export const PROVIDER_REGISTRY: Record<AIProviderId, ProviderConfig> = {
         name: 'Claude 3.5 Haiku',
         provider: 'anthropic',
         profile: 'fast',
-        description: 'High-speed coding model for snappy code fixes.',
+        description: 'High-speed coding model for snappy code fixes and explanations.',
         capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 4096 }
       }
     ]
@@ -103,10 +111,10 @@ export const PROVIDER_REGISTRY: Record<AIProviderId, ProviderConfig> = {
   deepseek: {
     id: 'deepseek',
     name: 'DeepSeek',
-    enabled: false,
+    enabled: true,
     adapter: 'deepseek',
     keyRequired: true,
-    badge: 'Coming Soon',
+    badge: 'Available',
     docUrl: 'https://api-docs.deepseek.com/',
     models: [
       {
@@ -123,6 +131,14 @@ export const PROVIDER_REGISTRY: Record<AIProviderId, ProviderConfig> = {
         provider: 'deepseek',
         profile: 'advanced',
         description: 'Reasoning model with chain-of-thought problem solving.',
+        capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 8192 }
+      },
+      {
+        id: 'deepseek-flash',
+        name: 'DeepSeek Flash',
+        provider: 'deepseek',
+        profile: 'fast',
+        description: 'Ultra-fast, cost-effective coding engine.',
         capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 8192 }
       }
     ]
@@ -157,6 +173,78 @@ export const PROVIDER_REGISTRY: Record<AIProviderId, ProviderConfig> = {
     badge: 'Available',
     docUrl: 'https://openrouter.ai/docs/quickstart',
     models: [
+      {
+        id: 'anthropic/claude-3.5-sonnet',
+        name: 'Claude 3.5 Sonnet (BYOK)',
+        provider: 'openrouter',
+        profile: 'advanced',
+        description: 'Industry-leading coding model on OpenRouter with superior algorithmic and architectural reasoning.',
+        capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 8192 }
+      },
+      {
+        id: 'anthropic/claude-3.7-sonnet',
+        name: 'Claude 3.7 Sonnet (BYOK)',
+        provider: 'openrouter',
+        profile: 'advanced',
+        description: 'Anthropic flagship with hybrid reasoning for deep competitive programming solutions.',
+        capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 8192 }
+      },
+      {
+        id: 'openai/gpt-4o',
+        name: 'OpenAI GPT-4o (BYOK)',
+        provider: 'openrouter',
+        profile: 'balanced',
+        description: 'Flagship omni model with advanced coding, debugging, and multi-file analysis.',
+        capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 4096 }
+      },
+      {
+        id: 'openai/gpt-4o-mini',
+        name: 'OpenAI GPT-4o Mini (BYOK)',
+        provider: 'openrouter',
+        profile: 'fast',
+        description: 'Ultra-fast, cost-effective coding model on OpenRouter.',
+        capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 4096 }
+      },
+      {
+        id: 'deepseek/deepseek-chat',
+        name: 'DeepSeek V3 (BYOK)',
+        provider: 'openrouter',
+        profile: 'balanced',
+        description: 'State-of-the-art open weights coding model via OpenRouter.',
+        capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 8192 }
+      },
+      {
+        id: 'deepseek/deepseek-r1',
+        name: 'DeepSeek R1 (BYOK)',
+        provider: 'openrouter',
+        profile: 'advanced',
+        description: 'Frontier chain-of-thought reasoning model for hard algorithms.',
+        capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 8192 }
+      },
+      {
+        id: 'meta-llama/llama-3.3-70b-instruct',
+        name: 'Llama 3.3 70B Instruct (BYOK)',
+        provider: 'openrouter',
+        profile: 'balanced',
+        description: 'Flagship open-weight 70B model with GPT-4-class coding and reasoning.',
+        capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 4096 }
+      },
+      {
+        id: 'qwen/qwen-2.5-coder-32b-instruct',
+        name: 'Qwen 2.5 Coder 32B (BYOK)',
+        provider: 'openrouter',
+        profile: 'advanced',
+        description: 'Dedicated competitive coding open-weights model by Alibaba Cloud.',
+        capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 8192 }
+      },
+      {
+        id: 'google/gemini-2.0-flash-001',
+        name: 'Gemini 2.0 Flash (BYOK)',
+        provider: 'openrouter',
+        profile: 'fast',
+        description: 'High-speed multimodal and coding model by Google.',
+        capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 8192 }
+      },
       {
         id: 'cohere/north-mini-code:free',
         name: 'Cohere North Mini Code (#1 Best Coding)',
@@ -210,22 +298,6 @@ export const PROVIDER_REGISTRY: Record<AIProviderId, ProviderConfig> = {
         isFree: true,
         description: 'Automatically routes to active zero-cost models on OpenRouter with smart load balancing.',
         capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 4096 }
-      },
-      {
-        id: 'meta-llama/llama-3.3-70b-instruct',
-        name: 'Llama 3.3 70B Instruct (BYOK)',
-        provider: 'openrouter',
-        profile: 'balanced',
-        description: 'Flagship open-weight 70B model with GPT-4-class coding and reasoning.',
-        capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 4096 }
-      },
-      {
-        id: 'qwen/qwen-2.5-coder-32b-instruct',
-        name: 'Qwen 2.5 Coder 32B (BYOK)',
-        provider: 'openrouter',
-        profile: 'advanced',
-        description: 'Dedicated competitive coding open-weights model by Alibaba Cloud.',
-        capabilities: { codeGeneration: true, codeExplanation: true, projectAnalysis: true, structuredJson: true, maxOutputTokens: 8192 }
       }
     ]
   }
@@ -256,6 +328,13 @@ export class ProviderRegistryService {
     return freeModels;
   }
 
+  public static getByokModels(providerId: AIProviderId): ModelOption[] {
+    const provider = PROVIDER_REGISTRY[providerId];
+    if (!provider) return [];
+    const byok = provider.models.filter((m) => !m.isFree && m.profile !== 'free');
+    return byok.length > 0 ? byok : provider.models;
+  }
+
   public static getModelsByProfile(profile: 'fast' | 'balanced' | 'advanced' | 'free'): ModelOption[] {
     const list: ModelOption[] = [];
     for (const provider of Object.values(PROVIDER_REGISTRY)) {
@@ -270,12 +349,17 @@ export class ProviderRegistryService {
     return list;
   }
 
-  public static getDefaultModelForProvider(providerId: AIProviderId): string {
+  public static getDefaultModelForProvider(providerId: AIProviderId, mode: 'managed' | 'byok' | 'free' = 'byok'): string {
     const provider = PROVIDER_REGISTRY[providerId];
-    if (provider && provider.models.length > 0) {
-      return provider.models[0].id;
+    if (!provider || provider.models.length === 0) {
+      return 'gemini-3.8-flash';
     }
-    return 'gemini-3.8-flash';
+    if (mode === 'free') {
+      const free = provider.models.find((m) => m.isFree || m.profile === 'free');
+      return free ? free.id : provider.models[0].id;
+    }
+    const byok = provider.models.find((m) => !m.isFree && m.profile !== 'free');
+    return byok ? byok.id : provider.models[0].id;
   }
 }
 

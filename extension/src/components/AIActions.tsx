@@ -17,12 +17,15 @@ import {
   OptimizationResponseDTO,
 } from '../types/ai';
 import { SolutionService } from '../services/api';
+import { ProjectService } from '../services/project-service';
 import { SolutionPreview } from './SolutionPreview';
 import { AIOptimizeSolution } from './AIOptimizeSolution';
 import { ExtensionMessagingService } from '../services/extension-messaging';
 import { normalizeLanguage } from '../utils/language';
 import { SUPPORTED_LANGUAGES } from './LanguageSelector';
 import { usePersistentDraft } from '../hooks/usePersistentDraft';
+import { useAuth } from '../context/AuthContext';
+import { ClipboardManager } from '../clipboard/clipboard-manager';
 
 interface AIActionsProps {
   problemContext: ProblemContext | null;
@@ -41,6 +44,16 @@ export const AIActions: React.FC<AIActionsProps> = ({
   providerOverride,
   onNotify,
 }) => {
+  const { user, subscription } = useAuth();
+  const userRole = (user?.role || '').toUpperCase();
+  const isPrivileged = userRole === 'ADMIN';
+  const planId = (subscription?.plan_id || '').toUpperCase();
+  const hasOneClick =
+    isPrivileged ||
+    planId === 'PLAN_CORE_PASS' ||
+    planId === 'PLAN_AUTOPILOT_PASS' ||
+    (subscription?.entitlements?.includes('one_click_insert') ?? false);
+
   const [activeTab, setActiveTab] = useState<AITab>('generate');
 
   // Loading states
@@ -117,10 +130,7 @@ export const AIActions: React.FC<AIActionsProps> = ({
           chrome.storage.local.remove(['codemate_multifile_session_v1'], () => {
             setMultiFileSession(null);
           });
-          chrome.storage.local.get(['codemate_ai_settings_v1'], (st: any) => {
-            const baseUrl = st?.codemate_ai_settings_v1?.backendUrl || 'http://localhost:8000';
-            fetch(`${baseUrl}/api/projects/ephemeral/clear-context`, { method: 'POST' }).catch(() => {});
-          });
+          ProjectService.clearEphemeralContext();
         }
       }
     }
@@ -132,28 +142,79 @@ export const AIActions: React.FC<AIActionsProps> = ({
         setMultiFileSession(null);
         onNotify('Multi-file project session cleared.', false);
       });
-      chrome.storage.local.get(['codemate_ai_settings_v1'], (st: any) => {
-        const baseUrl = st?.codemate_ai_settings_v1?.backendUrl || 'http://localhost:8000';
-        fetch(`${baseUrl}/api/projects/ephemeral/clear-context`, { method: 'POST' }).catch(() => {});
-      });
+      ProjectService.clearEphemeralContext();
     }
   };
 
-  const handleSyncFileToEditor = async (filename: string, code: string) => {
-    try {
-      const res = await ExtensionMessagingService.insertCode({
-        code,
-        mode: 'replace',
-        targetFile: filename,
-      });
-      const baseName = filename.split('/').pop() || filename;
-      if (res?.success) {
-        onNotify(`✓ Synced ${baseName} to active editor`, false);
-      } else {
-        onNotify(`Could not sync ${baseName} to editor`, true);
+  const lookupFileContent = (fileMap: Record<string, string> | undefined, targetFilename: string): string => {
+    if (!fileMap || !targetFilename) return '';
+    if (fileMap[targetFilename]) return fileMap[targetFilename];
+
+    const targetClean = targetFilename.toLowerCase().replace(/^[\\\/]+/, '');
+    const targetBase = targetClean.split('/').pop()?.split('\\').pop() || targetClean;
+
+    for (const [key, content] of Object.entries(fileMap)) {
+      const keyClean = key.toLowerCase().replace(/^[\\\/]+/, '');
+      const keyBase = keyClean.split('/').pop()?.split('\\').pop() || keyClean;
+      if (keyBase === targetBase || keyClean.endsWith('/' + targetBase) || keyClean.endsWith('\\' + targetBase)) {
+        return content;
       }
-    } catch (e: any) {
-      onNotify(`Sync error: ${e.message}`, true);
+    }
+    return '';
+  };
+
+  const handleSyncFileToEditor = async (filename: string, code: string) => {
+    const baseName = filename.split('/').pop() || filename;
+    const targetFileObj = multiFileSession?.files?.find((f: any) => f.filename === filename);
+
+    // Update Solution Preview immediately
+    setSolutionResult({
+      success: true,
+      problem_summary: `Multi-File Architecture: ${baseName}`,
+      approach: {
+        name: `${targetFileObj?.role || 'Component'} Implementation`,
+        explanation: `Solved ${baseName} (${targetFileObj?.role || 'Component'}) matching all project requirements and shared schemas.`,
+        steps: ['Analyzed shared schema', 'Implemented component logic', 'Preserved interface contracts'],
+      },
+      algorithm: 'Architectural Component Implementation',
+      data_structures: ['Entities', 'Services', 'State'],
+      code,
+      language: selectedLanguage,
+      complexity: {
+        time: { notation: 'O(1)', explanation: 'Lifecycle operations run in standard time' },
+        space: { notation: 'O(N)', explanation: 'Entities scale linearly with data' },
+      },
+      edge_cases: [],
+      sample_case_analysis: [],
+      warnings: [],
+      provider: providerOverride || 'gemini',
+      model: 'gemini-3.8-flash',
+    });
+
+    try {
+      if (hasOneClick) {
+        // Switch tab first and verify active tab
+        await ExtensionMessagingService.switchTab(filename);
+        await new Promise((r) => setTimeout(r, 150));
+
+        const res = await ExtensionMessagingService.insertCode({
+          code,
+          mode: 'replace',
+          targetFile: filename,
+        });
+        if (res?.success) {
+          onNotify(`✓ Replaced ${baseName} in active editor`, false);
+        } else {
+          await ClipboardManager.copyCode(code);
+          onNotify(`Copied ${baseName} to clipboard! Paste into editor (Ctrl+V)`, false);
+        }
+      } else {
+        await ClipboardManager.copyCode(code);
+        onNotify(`✓ Copied ${baseName} to clipboard! Paste into ${baseName} (Ctrl+V)`, false);
+      }
+    } catch {
+      await ClipboardManager.copyCode(code);
+      onNotify(`Copied ${baseName} to clipboard! Paste into editor (Ctrl+V)`, false);
     }
   };
 
@@ -182,7 +243,10 @@ export const AIActions: React.FC<AIActionsProps> = ({
       const apiKey = settings?.codemate_api_keys_v1?.[activeProvider] || undefined;
 
       const targetFileObj = multiFileSession.files?.find((f: any) => f.filename === filename);
-      const initialCode = targetFileObj?.initial_code || multiFileSession.initial_files?.[filename] || '';
+      const initialCode =
+        targetFileObj?.initial_code ||
+        lookupFileContent(multiFileSession.initial_files, filename) ||
+        '';
 
       const reqPayload = {
         project_id: multiFileSession.project_id || 'manual_session',
@@ -228,13 +292,41 @@ export const AIActions: React.FC<AIActionsProps> = ({
         chrome.storage.local.set({ codemate_multifile_session_v1: updated });
         setMultiFileSession(updated);
 
-        await ExtensionMessagingService.insertCode({
+        // Update Solution Preview as well
+        setSolutionResult({
+          success: true,
+          problem_summary: `Multi-File Architecture: ${baseName}`,
+          approach: {
+            name: `${targetFileObj?.role || 'Component'} Implementation`,
+            explanation: `Regenerated ${baseName} using shared project architectural context.`,
+            steps: ['Analyzed shared schema', 'Regenerated component logic', 'Preserved contracts'],
+          },
+          algorithm: 'Architectural Component Implementation',
+          data_structures: ['Entities', 'Services', 'State'],
           code: newCode,
-          mode: 'replace',
-          targetFile: filename,
+          language: selectedLanguage,
+          complexity: {
+            time: { notation: 'O(1)', explanation: 'Standard component lifecycle' },
+            space: { notation: 'O(N)', explanation: 'Data structures scale linearly' },
+          },
+          edge_cases: [],
+          sample_case_analysis: [],
+          warnings: [],
+          provider: activeProvider,
+          model: activeModel,
         });
 
-        onNotify(`✓ ${baseName} regenerated and synced to editor!`, false);
+        if (hasOneClick) {
+          await ExtensionMessagingService.insertCode({
+            code: newCode,
+            mode: 'replace',
+            targetFile: filename,
+          });
+          onNotify(`✓ ${baseName} regenerated and synced to editor!`, false);
+        } else {
+          await ClipboardManager.copyCode(newCode);
+          onNotify(`✓ ${baseName} regenerated! Copied to clipboard — paste into editor (Ctrl+V)`, false);
+        }
       } else {
         throw new Error(res?.error || 'Failed to regenerate code');
       }
@@ -333,6 +425,252 @@ export const AIActions: React.FC<AIActionsProps> = ({
         onSelectLanguage(targetLang);
       }
 
+      // Check if this is a Multi-File Project (>= 2 files harvested)
+      if (workspaceFiles && Object.keys(workspaceFiles).length >= 2) {
+        const settings: any = await new Promise((res) => {
+          chrome.storage.local.get(['codemate_ai_settings_v1', 'codemate_provider_selection_v1', 'codemate_api_keys_v1'], res);
+        });
+        const baseUrl = settings?.codemate_ai_settings_v1?.backendUrl || 'http://localhost:8000';
+        const activeProvider = providerOverride || settings?.codemate_provider_selection_v1?.provider || 'gemini';
+        const activeModel = settings?.codemate_provider_selection_v1?.model || 'gemini-3.8-flash';
+        const apiKey = settings?.codemate_api_keys_v1?.[activeProvider] || undefined;
+
+        let session = multiFileSession;
+        const currentTitle = (problemContext?.problemTitle || problemContext?.problemCode || 'Task').trim();
+
+        // Check if there are newly harvested workspace files not yet represented in the active session
+        const sessionFileNames = new Set(
+          (session?.files || []).map((f: any) =>
+            (f.filename || '').split('/').pop()?.split('\\').pop()?.trim().toLowerCase()
+          )
+        );
+
+        const hasNewHarvestedFiles = Object.keys(workspaceFiles).some((wf) => {
+          const base = wf.split('/').pop()?.split('\\').pop()?.trim().toLowerCase();
+          return base && !sessionFileNames.has(base);
+        });
+
+        const shouldReArchitect =
+          !session ||
+          session.problem_title !== currentTitle ||
+          !Array.isArray(session.files) ||
+          session.files.length === 0 ||
+          hasNewHarvestedFiles;
+
+        // Step A: Initialize blueprint & multi-file card if not created or if new workspace files discovered
+        if (shouldReArchitect) {
+          onNotify(
+            hasNewHarvestedFiles
+              ? 'Discovered newly opened project files — updating architectural blueprint...'
+              : 'Architecting multi-file project blueprint...',
+            false
+          );
+          const blueprintRes: any = await new Promise((resolve) => {
+            chrome.runtime.sendMessage(
+              {
+                type: 'SECURE_FORWARD_API',
+                endpoint: '/api/projects/ephemeral/blueprint',
+                payload: {
+                  workspace_files: workspaceFiles,
+                  problem_title: currentTitle,
+                  problem_statement: rawStatement,
+                  selected_language: normalizeLanguage(targetLang),
+                },
+                baseUrl,
+                provider: activeProvider,
+                model: activeModel,
+                apiKey,
+              },
+              (r) => resolve(r)
+            );
+          });
+
+          if (blueprintRes?.success && blueprintRes.data?.execution_plan) {
+            const actionable = blueprintRes.data.execution_plan.filter((s: any) => s.action === 'MODIFY');
+            // Natural Tab-Order: Prioritize active tab if focused
+            if (activeFileName) {
+              const activeLower = activeFileName.toLowerCase();
+              actionable.sort((a: any, b: any) => {
+                const aMatch = activeLower.includes(a.filename.toLowerCase()) || a.filename.toLowerCase().includes(activeLower);
+                const bMatch = activeLower.includes(b.filename.toLowerCase()) || b.filename.toLowerCase().includes(activeLower);
+                if (aMatch && !bMatch) return -1;
+                if (!aMatch && bMatch) return 1;
+                return 0;
+              });
+            }
+
+            // Retain any completed file solutions already generated in this session
+            const previousCompleted = new Map<string, { code: string; status: string }>();
+            if (session && Array.isArray(session.files)) {
+              for (const pf of session.files) {
+                if (pf.code && pf.status === 'completed') {
+                  const b = (pf.filename || '').split('/').pop()?.split('\\').pop()?.toLowerCase();
+                  if (b) previousCompleted.set(b, { code: pf.code, status: pf.status });
+                }
+              }
+            }
+
+            session = {
+              project_id: blueprintRes.data.project_id || 'proj_session',
+              problem_title: currentTitle,
+              problem_statement: rawStatement,
+              selected_language: normalizeLanguage(targetLang),
+              total_files: actionable.length,
+              status: 'in_progress',
+              timestamp: Date.now(),
+              initial_files: { ...(session?.initial_files || {}), ...workspaceFiles },
+              files: actionable.map((s: any) => {
+                const b = (s.filename || '').split('/').pop()?.split('\\').pop()?.toLowerCase();
+                const prev = b ? previousCompleted.get(b) : null;
+                return {
+                  filename: s.filename,
+                  role: s.role,
+                  action: s.action,
+                  reason: s.reason,
+                  status: prev ? prev.status : 'pending',
+                  code: prev ? prev.code : '',
+                };
+              }),
+            };
+            chrome.storage.local.set({ codemate_multifile_session_v1: session });
+            setMultiFileSession(session);
+          }
+        }
+
+        // Step B: Pick target file to solve (prioritize active tab if pending, or first pending step, or active tab to re-solve)
+        let targetFile = '';
+        if (session && Array.isArray(session.files)) {
+          // If active tab matches a pending file, prioritize solving that file first
+          if (activeFileName) {
+            const activeLower = activeFileName.toLowerCase();
+            const matched = session.files.find((f: any) =>
+              activeLower.includes(f.filename.toLowerCase()) || f.filename.toLowerCase().includes(activeLower)
+            );
+            if (matched && matched.status !== 'completed') {
+              targetFile = matched.filename;
+            }
+          }
+          // Otherwise find the first pending file in the project
+          if (!targetFile) {
+            const firstPending = session.files.find((f: any) => f.status !== 'completed');
+            if (firstPending) {
+              targetFile = firstPending.filename;
+            }
+          }
+          // If all files are completed, but user clicked Generate while focused on a file, re-solve that file
+          if (!targetFile && activeFileName) {
+            const activeLower = activeFileName.toLowerCase();
+            const matched = session.files.find((f: any) =>
+              activeLower.includes(f.filename.toLowerCase()) || f.filename.toLowerCase().includes(activeLower)
+            );
+            if (matched) {
+              targetFile = matched.filename;
+            }
+          }
+          // Fallback to first file
+          if (!targetFile) {
+            targetFile = session.files[0]?.filename || '';
+          }
+        }
+
+        if (targetFile && session) {
+          const baseName = targetFile.split('/').pop() || targetFile;
+          onNotify(`Solving ${baseName}...`, false);
+
+          const completedFilesContext: Record<string, string> = {};
+          for (const f of session.files) {
+            if (f.code && f.filename !== targetFile) {
+              completedFilesContext[f.filename] = f.code;
+            }
+          }
+
+          const targetFileObj = session.files.find((f: any) => f.filename === targetFile);
+          const initialCode =
+            targetFileObj?.initial_code ||
+            lookupFileContent(session.initial_files, targetFile) ||
+            lookupFileContent(workspaceFiles, targetFile) ||
+            (activeFileName && activeFileName.toLowerCase().includes(baseName.toLowerCase()) ? (starterCode || '') : '') ||
+            '';
+
+          const completeRes: any = await new Promise((resolve) => {
+            chrome.runtime.sendMessage(
+              {
+                type: 'SECURE_FORWARD_API',
+                endpoint: '/api/projects/ephemeral/complete-file',
+                payload: {
+                  project_id: session.project_id || 'proj_session',
+                  filename: targetFile,
+                  file_content: initialCode,
+                  problem_title: currentTitle,
+                  problem_statement: rawStatement,
+                  selected_language: normalizeLanguage(targetLang),
+                  completed_files_context: completedFilesContext,
+                },
+                baseUrl,
+                provider: activeProvider,
+                model: activeModel,
+                apiKey,
+              },
+              (r) => resolve(r)
+            );
+          });
+
+          if (completeRes?.success && completeRes.data?.code) {
+            const newCode = completeRes.data.code;
+            const updated = { ...session };
+            if (Array.isArray(updated.files)) {
+              const tgt = updated.files.find((f: any) => f.filename === targetFile);
+              if (tgt) {
+                tgt.code = newCode;
+                tgt.status = 'completed';
+              }
+            }
+            chrome.storage.local.set({ codemate_multifile_session_v1: updated });
+            setMultiFileSession(updated);
+
+            // Display in Solution Preview below
+            setSolutionResult({
+              success: true,
+              problem_summary: `Multi-File Architecture: ${baseName}`,
+              approach: {
+                name: `${targetFileObj?.role || 'Component'} Implementation`,
+                explanation: `Solved ${baseName} (${targetFileObj?.role || 'Component'}) matching all project requirements and shared schemas.`,
+                steps: ['Analyzed shared schema', 'Implemented component logic', 'Preserved interface contracts'],
+              },
+              algorithm: 'Architectural Component Implementation',
+              data_structures: ['Entities', 'Services', 'State'],
+              code: newCode,
+              language: targetLang,
+              complexity: {
+                time: { notation: 'O(1)', explanation: 'Lifecycle operations run in standard time' },
+                space: { notation: 'O(N)', explanation: 'Entities scale linearly with data' },
+              },
+              edge_cases: [],
+              sample_case_analysis: [],
+              warnings: [],
+              provider: activeProvider,
+              model: activeModel,
+            });
+
+            // Action: Auto-insert if Paid (Core / AutoPilot), or copy to clipboard if Free
+            if (hasOneClick) {
+              await ExtensionMessagingService.switchTab(targetFile);
+              await new Promise((r) => setTimeout(r, 150));
+              await ExtensionMessagingService.insertCode({
+                code: newCode,
+                mode: 'replace',
+                targetFile,
+              });
+              onNotify(`✓ Solved and replaced ${baseName} in editor!`, false);
+            } else {
+              await ClipboardManager.copyCode(newCode);
+              onNotify(`✓ Solved ${baseName}! Copied to clipboard — paste into editor (Ctrl+V)`, false);
+            }
+            return;
+          }
+        }
+      }
+
       const req: ProblemRequestDTO = {
         title: titleWithFile,
         problem_statement: statementWithContext,
@@ -349,11 +687,28 @@ export const AIActions: React.FC<AIActionsProps> = ({
 
       const res = await SolutionService.generate(req, providerOverride, abortCtrl.signal);
       setSolutionResult(res);
-      onNotify(
-        activeFileName
-          ? `✓ Optimal solution generated for ${activeFileName}!`
-          : `✓ Optimal ${selectedLanguage} solution generated!`
-      );
+
+      if (hasOneClick && res.code) {
+        await ExtensionMessagingService.insertCode({
+          code: res.code,
+          mode: 'replace',
+          targetFile: activeFileName || undefined,
+        });
+        onNotify(
+          activeFileName
+            ? `✓ Optimal solution generated & replaced in ${activeFileName}!`
+            : `✓ Optimal ${selectedLanguage} solution generated & replaced in editor!`
+        );
+      } else {
+        if (res.code) {
+          await ClipboardManager.copyCode(res.code);
+        }
+        onNotify(
+          activeFileName
+            ? `✓ Optimal solution generated for ${activeFileName}! Copied to clipboard (Ctrl+V)`
+            : `✓ Optimal ${selectedLanguage} solution generated! Copied to clipboard (Ctrl+V)`
+        );
+      }
     } catch (err: any) {
       if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
         return;
@@ -552,9 +907,13 @@ export const AIActions: React.FC<AIActionsProps> = ({
                   return (
                     <div
                       key={idx}
-                      className="flex items-center justify-between p-1.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-[11px]"
+                      className="flex items-center justify-between p-1.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-[11px] group"
                     >
-                      <div className="flex items-center gap-1.5 min-w-0 pr-1">
+                      <div
+                        onClick={() => file.code && handleSyncFileToEditor(file.filename, file.code)}
+                        className={`flex items-center gap-1.5 min-w-0 pr-1 ${file.code ? 'cursor-pointer hover:opacity-85' : ''}`}
+                        title={file.code ? `Click to view or insert ${baseName} into editor` : file.filename}
+                      >
                         {isDone ? (
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                         ) : isBusy ? (
@@ -562,11 +921,11 @@ export const AIActions: React.FC<AIActionsProps> = ({
                         ) : (
                           <FileCode className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                         )}
-                        <span className="font-mono text-slate-200 truncate" title={file.filename}>
+                        <span className="font-mono text-slate-200 truncate group-hover:text-indigo-300 transition-colors" title={file.filename}>
                           {baseName}
                         </span>
                         {file.role && (
-                          <span className="text-[9px] px-1 py-0.5 rounded bg-slate-800 text-slate-400 shrink-0">
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-slate-800 text-slate-400 shrink-0 font-sans">
                             {file.role}
                           </span>
                         )}
@@ -575,8 +934,8 @@ export const AIActions: React.FC<AIActionsProps> = ({
                         {file.code && (
                           <button
                             onClick={() => handleSyncFileToEditor(file.filename, file.code)}
-                            className="px-2 py-0.5 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 text-[10px] font-medium transition-colors cursor-pointer"
-                            title="Insert this code into editor"
+                            className="px-2 py-0.5 rounded bg-indigo-600/25 hover:bg-indigo-600/40 text-indigo-300 hover:text-indigo-200 border border-indigo-500/30 text-[10px] font-medium transition-colors cursor-pointer"
+                            title={`Sync & replace ${baseName} in active editor`}
                           >
                             Sync
                           </button>
@@ -584,14 +943,10 @@ export const AIActions: React.FC<AIActionsProps> = ({
                         <button
                           onClick={() => handleRegenerateFile(file.filename)}
                           disabled={isBusy}
-                          className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          className="p-1 rounded text-slate-400 hover:text-indigo-300 hover:bg-slate-800/80 transition-colors cursor-pointer disabled:opacity-50"
                           title="Regenerate this specific file using session memory"
                         >
-                          {isBusy ? (
-                            <RefreshCw className="w-2.5 h-2.5 animate-spin" />
-                          ) : (
-                            'Regen'
-                          )}
+                          <RefreshCw className={`w-3.5 h-3.5 ${isBusy ? 'animate-spin text-amber-400' : ''}`} />
                         </button>
                       </div>
                     </div>

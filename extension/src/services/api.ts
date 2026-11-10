@@ -204,14 +204,14 @@ export class CodeMateApiClient {
 
           if (err instanceof DOMException && err.name === 'AbortError') {
             throw new CodeMateAPIError(
-              `Request to backend timed out after ${this.defaultTimeoutMs / 1000} seconds.`,
+              'Request timed out. Please check your connection and try again.',
               'GATEWAY_TIMEOUT',
               504
             );
           }
 
           throw new CodeMateAPIError(
-            `Could not connect to CodeMate AI backend at ${this.baseUrl}. Please verify the Python server is running on port 8000.`,
+            'Unable to connect to CodeMate AI services. Please verify your connection or ensure the service is running.',
             'NETWORK_OFFLINE',
             503
           );
@@ -236,8 +236,11 @@ export class CodeMateApiClient {
   /**
    * GET /api/ai/status
    */
-  public static async getAIStatus(providerOverride?: string): Promise<AIStatusResponseDTO> {
-    const query = providerOverride ? `?provider=${encodeURIComponent(providerOverride)}` : '';
+  public static async getAIStatus(providerOverride?: string, modelOverride?: string): Promise<AIStatusResponseDTO> {
+    const params = new URLSearchParams();
+    if (providerOverride) params.set('provider', providerOverride);
+    if (modelOverride) params.set('model', modelOverride);
+    const query = params.toString() ? `?${params.toString()}` : '';
     return this.request<AIStatusResponseDTO>(`/api/ai/status${query}`, { method: 'GET' }, 1, providerOverride);
   }
 
@@ -368,7 +371,7 @@ export const SolutionService = {
 export const AISystemService = {
   getHealth: () => CodeMateApiClient.getBackendHealth(),
   getReadiness: () => CodeMateApiClient.getBackendReadiness(),
-  getStatus: (provider?: string) => CodeMateApiClient.getAIStatus(provider),
+  getStatus: (provider?: string, model?: string) => CodeMateApiClient.getAIStatus(provider, model),
   setBaseUrl: (url: string) => CodeMateApiClient.setBaseUrl(url),
   getBaseUrl: () => CodeMateApiClient.getBaseUrl(),
   getWebPortalUrl: () => CodeMateApiClient.getWebPortalUrl(),

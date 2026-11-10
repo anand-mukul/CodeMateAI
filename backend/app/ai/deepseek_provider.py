@@ -33,7 +33,8 @@ class DeepSeekProvider(OpenAIProvider):
         model_name: Optional[str] = None,
         base_url: Optional[str] = None,
     ):
-        key = api_key or settings.DEEPSEEK_API_KEY or settings.AI_API_KEY
+        raw_key = api_key.strip() if (api_key and isinstance(api_key, str)) else None
+        key = raw_key or settings.DEEPSEEK_API_KEY or settings.AI_API_KEY
         model = model_name or settings.DEEPSEEK_MODEL or "deepseek-flash"
         # Standardize base URL without trailing slash or duplicate /v1
         raw_url = base_url or settings.DEEPSEEK_BASE_URL or "https://api.deepseek.com"
@@ -50,8 +51,7 @@ class DeepSeekProvider(OpenAIProvider):
     def _get_headers(self) -> Dict[str, str]:
         if not self._has_valid_key():
             raise ValueError(
-                "DeepSeek API key is not configured. Add DEEPSEEK_API_KEY in backend/.env "
-                "or specify an API key in the request header."
+                "DeepSeek API key is not configured. Please enter your API key in Settings."
             )
         return {
             "Authorization": f"Bearer {self._api_key}",
@@ -69,7 +69,7 @@ class DeepSeekProvider(OpenAIProvider):
                 "provider": self.provider_name,
                 "model": self.model_name,
                 "is_mock": False,
-                "error": "DeepSeek API key is not configured. Please add DEEPSEEK_API_KEY in backend/.env",
+                "error": "DeepSeek API key is not configured. Please enter your API key in Settings.",
             }
 
         t0 = time.perf_counter()
@@ -92,13 +92,21 @@ class DeepSeekProvider(OpenAIProvider):
                         "latency_ms": latency_ms,
                         "available_models": model_ids or self.SUPPORTED_MODELS,
                     }
+                elif res.status_code == 401:
+                    return {
+                        "available": False,
+                        "provider": self.provider_name,
+                        "model": self.model_name,
+                        "is_mock": False,
+                        "error": "Invalid DeepSeek API key. Please check your credentials in Settings.",
+                    }
                 else:
                     return {
                         "available": False,
                         "provider": self.provider_name,
                         "model": self.model_name,
                         "is_mock": False,
-                        "error": f"DeepSeek returned HTTP {res.status_code}: {res.text[:150]}",
+                        "error": f"DeepSeek returned HTTP status {res.status_code}.",
                     }
         except httpx.TimeoutException:
             return {
@@ -106,13 +114,13 @@ class DeepSeekProvider(OpenAIProvider):
                 "provider": self.provider_name,
                 "model": self.model_name,
                 "is_mock": False,
-                "error": "DeepSeek probe timed out after 8.0s",
+                "error": "Connection to DeepSeek timed out. Please try again.",
             }
-        except Exception as exc:
+        except Exception:
             return {
                 "available": False,
                 "provider": self.provider_name,
                 "model": self.model_name,
                 "is_mock": False,
-                "error": str(exc),
+                "error": "Unable to reach DeepSeek servers. Please check your network connection.",
             }

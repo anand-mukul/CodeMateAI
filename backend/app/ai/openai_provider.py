@@ -26,7 +26,8 @@ class OpenAIProvider(AIProvider):
         model_name: Optional[str] = None,
         base_url: Optional[str] = None,
     ):
-        self._api_key = api_key or settings.AI_API_KEY
+        raw_key = api_key.strip() if (api_key and isinstance(api_key, str)) else None
+        self._api_key = raw_key or settings.AI_API_KEY
         self._model_name = model_name or settings.AI_MODEL or "gpt-4o-mini"
         self._base_url = (
             base_url
@@ -158,7 +159,7 @@ class OpenAIProvider(AIProvider):
                 "provider": self.provider_name,
                 "model": self.model_name,
                 "is_mock": False,
-                "error": "OpenAI API key is not configured. Add your key in Settings > Bring Your Own Key.",
+                "error": "OpenAI API key is not configured. Please enter your API key in Settings.",
             }
         try:
             resp = await asyncio.wait_for(
@@ -178,14 +179,14 @@ class OpenAIProvider(AIProvider):
                 "provider": self.provider_name,
                 "model": self.model_name,
                 "is_mock": False,
-                "error": "OpenAI connection probe timed out after 5.0s",
+                "error": "Connection to OpenAI timed out. Please try again.",
             }
-        except Exception as e:
+        except Exception:
             return {
                 "available": False,
                 "provider": self.provider_name,
                 "model": self.model_name,
                 "is_mock": False,
-                "error": str(e),
+                "error": "Unable to reach OpenAI servers. Please verify your API key and connection.",
             }
 

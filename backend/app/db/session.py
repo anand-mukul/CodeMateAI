@@ -195,7 +195,7 @@ async def init_db() -> None:
                 device_limit=1,
                 concurrent_session_limit=1,
                 ai_usage_limit=25,
-                feature_entitlements=json.dumps(["analyze", "explain", "generate", "optimize", "fix"]),
+                feature_entitlements=json.dumps(["analyze", "explain", "generate", "optimize", "fix", "one_click_insert"]),
                 active=True,
             ),
             Plan(

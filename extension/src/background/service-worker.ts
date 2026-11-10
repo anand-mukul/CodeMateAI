@@ -72,7 +72,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       console.error('[CodeMate AI Security] Blocked API forwarding to unapproved origin:', rawBaseUrl);
       sendResponse({
         success: false,
-        error: `Target backend URL '${rawBaseUrl}' is not permitted by extension security policy.`,
+        error: 'The requested service endpoint is not permitted by extension security policy.',
       });
       return false;
     }
@@ -94,8 +94,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     const method = (message.method || 'POST').toUpperCase();
 
+    // Check if endpoint is public or requires authentication
+    const isPublicEndpoint =
+      endpoint.startsWith('/api/auth/login') ||
+      endpoint.startsWith('/api/auth/register') ||
+      endpoint.startsWith('/api/auth/google') ||
+      endpoint.startsWith('/api/plans') ||
+      endpoint.startsWith('/api/health') ||
+      endpoint.startsWith('/api/ready');
+
     chrome.storage.local.get(['codemate_auth_tokens_v1', 'codemate_auth_tokens'], async (store) => {
       let tokens = store.codemate_auth_tokens_v1 || store.codemate_auth_tokens;
+      if (!isPublicEndpoint && (!tokens || !tokens.access_token)) {
+        clearTimeout(timeoutTimer);
+        sendResponse({
+          success: false,
+          error: 'Authentication required. Please sign in to CodeMate.',
+          status: 401,
+        });
+        return;
+      }
+
       if (tokens && tokens.access_token) {
         headers['Authorization'] = `Bearer ${tokens.access_token}`;
       }
@@ -158,7 +177,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: true, data });
       } catch (err: any) {
         clearTimeout(timeoutTimer);
-        const errMsg = err.name === 'AbortError' ? 'Backend request timed out (75s)' : err.message || 'Network error';
+        const errMsg = err.name === 'AbortError' ? 'Request timed out. Please try again.' : err.message || 'Network communication error';
         sendResponse({ success: false, error: errMsg });
       }
     });

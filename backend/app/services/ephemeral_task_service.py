@@ -12,6 +12,7 @@ from app.ai.provider import AIProvider
 from app.ai.provider_manager import ProviderManager
 from app.core.logging import logger
 from app.services.upstash_service import UpstashRedisService
+from app.services.starter_fidelity import StarterFidelityEngine
 
 
 class EphemeralTaskService:
@@ -123,6 +124,12 @@ class EphemeralTaskService:
         raw_files = task_state.get("raw_files", {})
         target_starter_code = raw_files.get(target_file, "")
         total_steps = len(task_state.get("dependency_order", []))
+        detected_lang = cls._detect_lang(target_file)
+
+        # Build universal starter code fidelity directives
+        fidelity_directives = StarterFidelityEngine.build_fidelity_prompt_directives(
+            target_starter_code, language=detected_lang, filename=target_file
+        )
 
         # Format compressed context
         contracts_summary = json.dumps(shared_contracts, indent=2)
@@ -131,20 +138,23 @@ class EphemeralTaskService:
         prompt = (
             f"You are CodeMate AI's specialized multi-file software engineering agent.\n"
             f"TASK: Implement step {step_index + 1} of {total_steps}: file '{target_file}' for problem '{problem_title}'.\n\n"
-            f"PROBLEM STATEMENT:\n{problem_statement[:2500]}\n\n"
+            f"PROBLEM STATEMENT:\n{problem_statement[:15000]}\n\n"
             f"CUMULATIVE WORKING MEMORY CONTRACTS (Must match existing declarations exactly):\n"
             f"{contracts_summary}\n\n"
             f"PREVIOUS STEPS EXECUTED:\n"
             f"{history_summary}\n\n"
             f"TARGET FILE: '{target_file}'\n"
-            f"EXISTING STARTER CODE:\n```{target_starter_code[:2000]}```\n\n"
+            f"EXISTING STARTER CODE:\n```{detected_lang}\n{target_starter_code[:15000]}\n```\n\n"
             f"STRICT IMPLEMENTATION INSTRUCTIONS:\n"
-            f"1. Generate the COMPLETE, ready-to-compile production code for '{target_file}'.\n"
-            f"2. Use EXACT naming, packages, annotations, and parameters declared in CUMULATIVE WORKING MEMORY CONTRACTS.\n"
-            f"3. Do NOT include unit tests, mocks, or placeholder stubs unless explicitly instructed by the problem.\n"
-            f"4. If this file declares new Entities, Endpoints, or Services, summarize them in an EXTRACTED CONTRACTS JSON block at the end.\n\n"
+            f"1. HIGHEST MANDATE — PROBLEM STATEMENT IS THE ABSOLUTE SPECIFICATION: Always give 100% priority to instructions given in the PROBLEM STATEMENT. If any in-code comment, javadoc, or TODO conflicts with the problem statement (e.g. a TODO suggests constructor injection, but the problem statement instructs @Autowired field injection, or vice-versa), the PROBLEM STATEMENT ALWAYS WINS. Disregard any contradictory comment.\n"
+            f"2. Generate the COMPLETE, ready-to-compile production code for '{target_file}'.\n"
+            f"3. Use EXACT naming, packages, annotations, and parameters declared in CUMULATIVE WORKING MEMORY CONTRACTS.\n"
+            f"4. Do NOT include unit tests, mocks, or placeholder stubs unless explicitly instructed by the problem.\n"
+            f"5. DEPENDENCY INJECTION & CONSTRUCTORS: Always give absolute priority to instructions in the problem statement. If the problem specifies field-level injection (e.g. '@Autowired'), annotate fields directly and do NOT write manual constructors. If constructor injection is specified, implement constructor injection. Otherwise adhere to existing starter code conventions. Never mix field injection and constructor injection for the same dependency.\n"
+            f"{fidelity_directives}\n"
+            f"6. If this file declares new Entities, Endpoints, or Services, summarize them in an EXTRACTED CONTRACTS JSON block at the end.\n\n"
             f"OUTPUT FORMAT:\n"
-            f"```{cls._detect_lang(target_file)}\n"
+            f"```{detected_lang}\n"
             f"<COMPLETE_FILE_CODE>\n"
             f"```\n"
             f"EXPLANATION: <Brief 1-line explanation>\n"
@@ -155,12 +165,17 @@ class EphemeralTaskService:
         raw_output = await provider.generate_text(
             prompt,
             system_prompt=(
-                "You are an expert autonomous software engineer. "
-                "Output production-grade, bug-free code strictly adhering to shared project contracts."
+                "You are an expert autonomous software engineer.\n"
+                "AUTHORITY HIERARCHY (PROBLEM STATEMENT > IN-CODE COMMENTS):\n"
+                "1. The PROBLEM STATEMENT is the absolute authoritative specification. Always implement what the problem statement requires.\n"
+                "2. If any starter code comment, javadoc, or TODO contradicts the problem statement (e.g. a TODO tells you to replace an injection style, but the problem statement instructs @Autowired field injection), YOU MUST OBEY THE PROBLEM STATEMENT AND DISREGARD THE CONFLICTING TODO.\n"
+                "3. Output production-grade, bug-free code strictly adhering to shared project contracts and problem requirements."
             ),
         )
 
         code, explanation, extracted_contracts = cls._parse_file_output(raw_output, target_file)
+        if detected_lang == "java" and not target_file.lower().endswith(("test.java", "tests.java")):
+            code = StarterFidelityEngine.strip_test_methods(code)
         return code, explanation, extracted_contracts
 
     @classmethod

@@ -65,15 +65,15 @@
 [data-theme="openai"],
 [data-theme="cyberpunk"] {
   color-scheme: dark;
-  --cm-canvas: #060d0a;
-  --cm-surface: #0b1a14;
-  --cm-subsurface: #040907;
-  --cm-hover: #132b21;
-  --cm-border: #1c3d30;
-  --cm-border-sub: #132c22;
-  --cm-text: #f0fdf4;
-  --cm-text-muted: #bbf7d0;
-  --cm-text-dim: #86efac;
+  --cm-canvas: #070c0a;
+  --cm-surface: #0d1713;
+  --cm-subsurface: #060b09;
+  --cm-hover: #14241d;
+  --cm-border: #162b21;
+  --cm-border-sub: #0f1e17;
+  --cm-text: #f2fbf6;
+  --cm-text-muted: #9bb0a5;
+  --cm-text-dim: #6b8075;
   --cm-accent: #10b981;
   --cm-accent-hover: #059669;
   --cm-accent-muted: rgba(16, 185, 129, 0.15);

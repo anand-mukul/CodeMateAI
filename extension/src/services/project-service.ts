@@ -323,5 +323,22 @@ export class ProjectService {
     }
     return response.json();
   }
+
+  /**
+   * Purge ephemeral multi-file task context and Redis cache.
+   */
+  public static async clearEphemeralContext(): Promise<boolean> {
+    try {
+      const url = `${this.getBaseUrl()}/api/projects/ephemeral/clear-context`;
+      const headers = await this.getAuthHeaders();
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
 }
 

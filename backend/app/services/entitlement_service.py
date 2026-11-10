@@ -39,45 +39,6 @@ async def get_current_user_and_session(
     and checks device registration status.
     """
     if not credentials:
-        if settings.ENVIRONMENT != "production":
-            # In local dev/test mode when no header is supplied, associate with standard dev user
-            dev_user_q = select(User).where(User.email == "dev@codemateai.local")
-            dev_user_res = await db.execute(dev_user_q)
-            dev_user = dev_user_res.scalars().first()
-            if not dev_user:
-                dev_user = User(
-                    email="dev@codemateai.local",
-                    password_hash="dev_placeholder_hash",
-                    display_name="Developer Local",
-                    email_verified=True,
-                    role=UserRole.ADMIN.value,
-                    account_status=AccountStatus.ACTIVE.value,
-                )
-                db.add(dev_user)
-                await db.commit()
-                await db.refresh(dev_user)
-                await SubscriptionService.get_or_create_user_subscription(db, dev_user.id)
-
-            dev_sess_q = select(UserSession).where(
-                and_(UserSession.user_id == dev_user.id, UserSession.session_status == SessionStatus.ACTIVE.value)
-            )
-            dev_sess_res = await db.execute(dev_sess_q)
-            dev_sess = dev_sess_res.scalars().first()
-            if not dev_sess:
-                from datetime import timedelta
-                dev_sess = UserSession(
-                    user_id=dev_user.id,
-                    device_id="dev_device_local",
-                    refresh_token_hash="dev_refresh_hash",
-                    session_status=SessionStatus.ACTIVE.value,
-                    expires_at=utc_now() + timedelta(days=365),
-                )
-                db.add(dev_sess)
-                await db.commit()
-                await db.refresh(dev_sess)
-
-            return dev_user, dev_sess
-
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required. Missing Bearer token.",

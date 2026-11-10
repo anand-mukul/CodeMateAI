@@ -54,8 +54,8 @@ class MockAIProvider(AIProvider):
             return f"```java\npublic class {cname} {{\n    // Completed implementation\n}}\n```"
 
         return (
-            "[CodeMate AI Mock Provider] This is a simulated text response for development and offline testing. "
-            "To connect a real LLM, configure AI_PROVIDER and AI_API_KEY in backend/.env."
+            "[CodeMate AI Mock Provider] This is a simulated response for offline testing. "
+            "To connect live AI models, select a provider in Settings."
         )
 
     async def generate_structured(
@@ -352,11 +352,6 @@ class MockAIProvider(AIProvider):
                 "public class StudentController {\n\n"
                 "    @Autowired\n"
                 "    private StudentService studentService;\n\n"
-                "    public StudentController() {\n"
-                "    }\n\n"
-                "    public StudentController(StudentService studentService) {\n"
-                "        this.studentService = studentService;\n"
-                "    }\n\n"
                 "    // DONE (example): GET /api/students -> all students\n"
                 "    @GetMapping\n"
                 "    public List<Student> getAll() {\n"
@@ -774,11 +769,6 @@ class MockAIProvider(AIProvider):
                 "public class StudentController {\n\n"
                 "    @Autowired\n"
                 "    private StudentService studentService;\n\n"
-                "    public StudentController() {\n"
-                "    }\n\n"
-                "    public StudentController(StudentService studentService) {\n"
-                "        this.studentService = studentService;\n"
-                "    }\n\n"
                 "    // DONE (example): GET /api/students -> all students\n"
                 "    @GetMapping\n"
                 "    public List<Student> getAll() {\n"

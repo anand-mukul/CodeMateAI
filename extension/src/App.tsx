@@ -9,7 +9,7 @@ import { useEditorStatus } from './hooks/useEditorStatus';
 import { AISystemService } from './services/api';
 import { StorageService, AIMode } from './services/storage';
 import { AIStatusResponseDTO } from './types/ai';
-import { Sparkles, ClipboardList, Zap, Lock } from 'lucide-react';
+import { Sparkles, ClipboardList, Zap, Lock, ArrowLeft } from 'lucide-react';
 import { ReliabilityEngine } from './services/reliability-engine';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -79,11 +79,41 @@ const AppContent: React.FC<AppProps> = ({ isSidePanel = false }) => {
     try {
       const s = await StorageService.getSettings();
       setAiMode(s.aiMode);
-      const health = await AISystemService.getHealth();
-      setBackendOnline(health.status === 'healthy');
-      const status = await AISystemService.getStatus(s.aiMode === 'managed' ? undefined : activeProvider);
-      setAiStatus(status);
-      ReliabilityEngine.updateSystemStatus(health.status === 'healthy', activeProvider);
+
+      let isHealthy = false;
+      try {
+        const health = await AISystemService.getHealth();
+        isHealthy = health.status === 'healthy';
+      } catch {
+        // Windows IPv4/IPv6 Fallback: If localhost failed, test 127.0.0.1
+        const currentUrl = AISystemService.getBaseUrl();
+        if (currentUrl.includes('localhost')) {
+          try {
+            const fallbackUrl = currentUrl.replace('localhost', '127.0.0.1');
+            AISystemService.setBaseUrl(fallbackUrl);
+            AuthService.setBaseUrl(fallbackUrl);
+            const health = await AISystemService.getHealth();
+            isHealthy = health.status === 'healthy';
+          } catch {}
+        }
+      }
+
+      setBackendOnline(isHealthy);
+      ReliabilityEngine.updateSystemStatus(isHealthy, activeProvider);
+
+      if (!isHealthy) {
+        setAiStatus(null);
+        return;
+      }
+
+      // Check provider AI status independently without pulling backend offline
+      try {
+        const status = await AISystemService.getStatus(s.aiMode === 'managed' ? undefined : activeProvider);
+        setAiStatus(status);
+      } catch (aiErr) {
+        console.warn('[CodeMate AI] AI provider status check warning:', aiErr);
+        setAiStatus(null);
+      }
     } catch {
       setBackendOnline(false);
       setAiStatus(null);
@@ -111,18 +141,18 @@ const AppContent: React.FC<AppProps> = ({ isSidePanel = false }) => {
 
   const getFooterAIStatus = () => {
     if (!backendOnline) return 'Offline';
-    if (aiMode === 'managed') return 'Cloud ready';
+    if (aiMode === 'managed') return 'Connected';
     switch (activeProvider?.toLowerCase()) {
       case 'deepseek':
-        return 'DeepSeek ready';
+        return 'DeepSeek connected';
       case 'gemini':
-        return 'Gemini ready';
+        return 'Gemini connected';
       case 'openai':
-        return 'OpenAI ready';
+        return 'OpenAI connected';
       case 'openrouter':
-        return 'OpenRouter ready';
+        return 'OpenRouter connected';
       default:
-        return 'Ready';
+        return 'Connected';
     }
   };
 
@@ -139,20 +169,22 @@ const AppContent: React.FC<AppProps> = ({ isSidePanel = false }) => {
 
       {/* Settings Drawer (Raycast/Linear UX: Manage AI | Account & Preferences) */}
       {isSettingsOpen ? (
-        <AISettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          activeProvider={activeProvider}
-          onSelectProvider={(p) => {
-            if (p !== activeProvider) {
-              setActiveProvider(p);
-              showToast(`Switched provider to ${p}`);
-            }
-          }}
-          aiStatus={aiStatus}
-          onRefreshStatus={checkBackendStatus}
-          onOpenFullAccount={() => setActiveSubView('full_account')}
-        />
+        <div className="flex-1 flex flex-col animate-fade-in pb-2">
+          <AISettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            activeProvider={activeProvider}
+            onSelectProvider={(p) => {
+              if (p !== activeProvider) {
+                setActiveProvider(p);
+                showToast(`Switched provider to ${p}`);
+              }
+            }}
+            aiStatus={aiStatus}
+            onRefreshStatus={checkBackendStatus}
+            onOpenFullAccount={() => setActiveSubView('full_account')}
+          />
+        </div>
       ) : loading && !editorStatus && activeSubView === 'code' ? (
         <LoadingState message="Connecting to CodeChef practice editor & AI backend..." />
       ) : !user ? (
@@ -256,12 +288,13 @@ const AppContent: React.FC<AppProps> = ({ isSidePanel = false }) => {
 
           {/* Full Account & Devices Detail View (accessible via Settings) */}
           {activeSubView === 'full_account' && (
-            <div className="animate-fade-in flex flex-col gap-2">
+            <div className="animate-fade-in flex flex-col gap-2.5">
               <button
                 onClick={() => setActiveSubView('code')}
-                className="self-start text-[11px] text-indigo-300 hover:text-white flex items-center gap-1 font-semibold cursor-pointer"
+                className="self-start text-[11px] text-slate-400 hover:text-white flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900/80 hover:bg-slate-800 border border-slate-800/80 transition-all font-medium cursor-pointer shadow-xs"
               >
-                ← Back to Practice
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Practice</span>
               </button>
               <AccountView onNotify={showToast} />
             </div>

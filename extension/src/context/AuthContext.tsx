@@ -97,6 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (err?.status === 401) {
         setUser(null);
         setSubscription(null);
+        await AuthService.clearTokens();
       }
     } finally {
       setIsLoading(false);

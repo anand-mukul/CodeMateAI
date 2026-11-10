@@ -38,9 +38,12 @@ export class FloatingLauncher {
           'codemate_subscription_v1',
         ], resolve);
       });
-      this.currentToken = st?.codemate_auth_tokens_v1?.access_token || st?.codemate_auth_tokens?.access_token || null;
-      this.currentUser = st?.codemate_user_v1 || null;
-      this.currentSubscription = st?.codemate_subscription_v1 || null;
+      const token = st?.codemate_auth_tokens_v1?.access_token || st?.codemate_auth_tokens?.access_token || null;
+      const user = st?.codemate_user_v1 || null;
+      // Strict authentication consistency: requires both valid access token and user record
+      this.currentToken = token && user ? token : null;
+      this.currentUser = token && user ? user : null;
+      this.currentSubscription = token && user ? (st?.codemate_subscription_v1 || null) : null;
       this.updateLauncherUI();
     } catch (e) {
       console.warn('[CodeMate AI] syncAuthState error:', e);
@@ -61,7 +64,7 @@ export class FloatingLauncher {
     const entitlements: string[] = this.currentSubscription?.entitlements || [];
     const hasAutopilot = isPrivileged || planId === 'PLAN_AUTOPILOT_PASS' || entitlements.includes('one_click_insert') || entitlements.includes('autopilot');
 
-    if (!this.currentToken) {
+    if (!this.currentToken || !this.currentUser) {
       textSpan.textContent = 'Sign In to Solve';
       solveBtn.title = 'Click to open CodeMate and sign in to access autonomous problem solving';
       solveBtn.style.background = 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)';
@@ -662,7 +665,8 @@ export class FloatingLauncher {
 
       await this.syncAuthState();
 
-      if (!this.currentToken) {
+      if (!this.currentToken || !this.currentUser) {
+        FloatingLauncher.showToast('🔒 Please sign in to CodeMate to unlock AI problem solving', 'warning');
         chrome.runtime.sendMessage({ type: 'OPEN_SIDEPANEL' });
         return;
       }
@@ -915,21 +919,23 @@ export class FloatingLauncher {
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
           chrome.storage.local.get(['codemate_auth_tokens_v1', 'codemate_auth_tokens', 'codemate_user_v1'], (st) => {
             const token = st.codemate_auth_tokens_v1?.access_token || st.codemate_auth_tokens?.access_token;
-            res({ token, user: st.codemate_user_v1 });
+            const user = st.codemate_user_v1;
+            res({ token: token && user ? token : undefined, user: token && user ? user : undefined });
           });
         } else {
           res({});
         }
       });
 
-      if (!authState.token) {
+      if (!authState.token || !authState.user) {
         setStatus('🔒 Sign In to Solve', 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)');
+        FloatingLauncher.showToast('🔒 Please sign in to CodeMate to unlock AI problem solving', 'warning');
         chrome.runtime.sendMessage({ type: 'OPEN_SIDEPANEL' });
         setTimeout(() => {
           this.isBusy = false;
-          setStatus('Auto-Pilot Solve');
+          setStatus('Sign In to Solve');
           onFinishCollapse();
-        }, 3000);
+        }, 2000);
         return;
       }
 
