@@ -22,6 +22,18 @@ export class FloatingLauncher {
   private static currentSubscription: any = null;
   private static activeAbortController: AbortController | null = null;
   private static activeProjectId: string | null = null;
+  private static bridgeSecret: string = '';
+
+  public static setBridgeSecret(secret: string): void {
+    this.bridgeSecret = secret;
+  }
+
+  private static generateNonce(prefix = 'cm'): string {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return `${prefix}_${crypto.randomUUID()}`;
+    }
+    return `${prefix}_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+  }
 
   public static getCurrentProvider(): string {
     return this.currentProvider;
@@ -1500,7 +1512,7 @@ export class FloatingLauncher {
    */
   private static queryEditorCode(): Promise<{ code: string }> {
     return new Promise((resolve, reject) => {
-      const nonce = `cm_launcher_${Date.now()}`;
+      const nonce = this.generateNonce('cm_launcher');
       const timer = setTimeout(() => reject(new Error('Timeout querying editor')), 2500);
 
       const handler = (event: Event) => {
@@ -1519,7 +1531,7 @@ export class FloatingLauncher {
       window.addEventListener('CODEMATE_RESPONSE', handler);
       window.dispatchEvent(
         new CustomEvent('CODEMATE_REQUEST', {
-          detail: { nonce, operation: 'GET_VALUE' },
+          detail: { secret: this.bridgeSecret, nonce, operation: 'GET_VALUE' },
         })
       );
     });
@@ -1530,7 +1542,7 @@ export class FloatingLauncher {
    */
   private static insertCodeIntoEditor(code: string, targetFile?: string): Promise<boolean> {
     return new Promise((resolve, reject) => {
-      const nonce = `cm_insert_${Date.now()}`;
+      const nonce = this.generateNonce('cm_insert');
       const timer = setTimeout(() => reject(new Error('Timeout inserting code')), 8000);
 
       const handler = (event: Event) => {
@@ -1549,7 +1561,7 @@ export class FloatingLauncher {
       window.addEventListener('CODEMATE_RESPONSE', handler);
       window.dispatchEvent(
         new CustomEvent('CODEMATE_REQUEST', {
-          detail: { nonce, operation: 'INSERT_CODE', payload: { code, mode: 'replace', targetFile } },
+          detail: { secret: this.bridgeSecret, nonce, operation: 'INSERT_CODE', payload: { code, mode: 'replace', targetFile } },
         })
       );
     });
@@ -1560,7 +1572,7 @@ export class FloatingLauncher {
    */
   private static switchTabOnPage(fileName: string): Promise<boolean> {
     return new Promise((resolve) => {
-      const nonce = `cm_tab_${Date.now()}`;
+      const nonce = this.generateNonce('cm_tab');
       const timer = setTimeout(() => resolve(false), 2000);
 
       const handler = (event: Event) => {
@@ -1575,7 +1587,7 @@ export class FloatingLauncher {
       window.addEventListener('CODEMATE_RESPONSE', handler);
       window.dispatchEvent(
         new CustomEvent('CODEMATE_REQUEST', {
-          detail: { nonce, operation: 'SWITCH_TAB', payload: { fileName } },
+          detail: { secret: this.bridgeSecret, nonce, operation: 'SWITCH_TAB', payload: { fileName } },
         })
       );
     });
@@ -1586,7 +1598,7 @@ export class FloatingLauncher {
    */
   private static openFileOnPage(fileName: string): Promise<boolean> {
     return new Promise((resolve) => {
-      const nonce = `cm_open_${Date.now()}`;
+      const nonce = this.generateNonce('cm_open');
       const timer = setTimeout(() => resolve(false), 2000);
 
       const handler = (event: Event) => {
@@ -1601,7 +1613,7 @@ export class FloatingLauncher {
       window.addEventListener('CODEMATE_RESPONSE', handler);
       window.dispatchEvent(
         new CustomEvent('CODEMATE_REQUEST', {
-          detail: { nonce, operation: 'OPEN_FILE', payload: { fileName } },
+          detail: { secret: this.bridgeSecret, nonce, operation: 'OPEN_FILE', payload: { fileName } },
         })
       );
     });
@@ -1613,7 +1625,7 @@ export class FloatingLauncher {
    */
   private static triggerRunOnPage(): Promise<boolean> {
     return new Promise((resolve) => {
-      const nonce = `cm_run_${Date.now()}`;
+      const nonce = this.generateNonce('cm_run');
       const timer = setTimeout(() => resolve(false), 2000);
 
       const handler = (event: Event) => {
@@ -1628,7 +1640,7 @@ export class FloatingLauncher {
       window.addEventListener('CODEMATE_RESPONSE', handler);
       window.dispatchEvent(
         new CustomEvent('CODEMATE_REQUEST', {
-          detail: { nonce, operation: 'TRIGGER_RUN' },
+          detail: { secret: this.bridgeSecret, nonce, operation: 'TRIGGER_RUN' },
         })
       );
     });
@@ -1639,7 +1651,7 @@ export class FloatingLauncher {
    */
   private static getRunStatusFromPage(): Promise<{ status: string; details?: string }> {
     return new Promise((resolve) => {
-      const nonce = `cm_status_${Date.now()}`;
+      const nonce = this.generateNonce('cm_status');
       const timer = setTimeout(() => resolve({ status: 'IDLE' }), 1500);
 
       const handler = (event: Event) => {
@@ -1654,7 +1666,7 @@ export class FloatingLauncher {
       window.addEventListener('CODEMATE_RESPONSE', handler);
       window.dispatchEvent(
         new CustomEvent('CODEMATE_REQUEST', {
-          detail: { nonce, operation: 'GET_RUN_STATUS' },
+          detail: { secret: this.bridgeSecret, nonce, operation: 'GET_RUN_STATUS' },
         })
       );
     });
@@ -1665,7 +1677,7 @@ export class FloatingLauncher {
    */
   private static harvestWorkspaceFiles(): Promise<Record<string, string>> {
     return new Promise((resolve) => {
-      const nonce = `cm_harvest_${Date.now()}`;
+      const nonce = this.generateNonce('cm_harvest');
       const timer = setTimeout(() => resolve({}), 6000);
 
       const handler = (event: Event) => {
@@ -1684,7 +1696,7 @@ export class FloatingLauncher {
       window.addEventListener('CODEMATE_RESPONSE', handler);
       window.dispatchEvent(
         new CustomEvent('CODEMATE_REQUEST', {
-          detail: { nonce, operation: 'HARVEST_WORKSPACE' },
+          detail: { secret: this.bridgeSecret, nonce, operation: 'HARVEST_WORKSPACE' },
         })
       );
     });
@@ -1695,7 +1707,7 @@ export class FloatingLauncher {
    */
   private static applyMultiFileUpdates(files: Record<string, string>): Promise<boolean> {
     return new Promise((resolve) => {
-      const nonce = `cm_patch_${Date.now()}`;
+      const nonce = this.generateNonce('cm_patch');
       const timer = setTimeout(() => resolve(false), 10000);
 
       const handler = (event: Event) => {
@@ -1710,7 +1722,7 @@ export class FloatingLauncher {
       window.addEventListener('CODEMATE_RESPONSE', handler);
       window.dispatchEvent(
         new CustomEvent('CODEMATE_REQUEST', {
-          detail: { nonce, operation: 'APPLY_MULTIFILE_PATCH', payload: { files } },
+          detail: { secret: this.bridgeSecret, nonce, operation: 'APPLY_MULTIFILE_PATCH', payload: { files } },
         })
       );
     });

@@ -18,6 +18,12 @@ import { ClipboardManager } from '../clipboard/clipboard-manager';
   const CHANNEL_REQUEST = 'CODEMATE_REQUEST';
   const CHANNEL_RESPONSE = 'CODEMATE_RESPONSE';
 
+  // Secure session authentication handshake with content-main.ts
+  const bridgeSecret = document.documentElement.getAttribute('data-cm-sec') || '';
+  if (bridgeSecret) {
+    document.documentElement.removeAttribute('data-cm-sec');
+  }
+
   function generateSecureNonce(): string {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
       return crypto.randomUUID();
@@ -83,6 +89,7 @@ import { ClipboardManager } from '../clipboard/clipboard-manager';
       window.dispatchEvent(
         new CustomEvent(CHANNEL_REQUEST, {
           detail: {
+            secret: bridgeSecret,
             nonce,
             requestId: nonce,
             operation,
@@ -96,6 +103,7 @@ import { ClipboardManager } from '../clipboard/clipboard-manager';
 
   // Initialize Page Observer & Launcher if on CodeChef
   if (PageDetector.isCodeChef()) {
+    FloatingLauncher.setBridgeSecret(bridgeSecret);
     let lastProblemIdentifier: string | null = null;
 
     const syncCurrentProblem = () => {
@@ -108,7 +116,8 @@ import { ClipboardManager } from '../clipboard/clipboard-manager';
             if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
               chrome.storage.local.remove(['codemate_multifile_session_v1']);
               chrome.storage.local.get(['codemate_ai_settings_v1'], (st) => {
-                const baseUrl = st?.codemate_ai_settings_v1?.backendUrl || 'http://localhost:8000';
+                const defaultApi = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+                const baseUrl = st?.codemate_ai_settings_v1?.backendUrl || defaultApi;
                 fetch(`${baseUrl}/api/projects/ephemeral/clear-context`, { method: 'POST' }).catch(() => {});
               });
             }
@@ -153,15 +162,23 @@ import { ClipboardManager } from '../clipboard/clipboard-manager';
 
   // --- BI-DIRECTIONAL AUTH SYNCHRONIZATION BRIDGE (Web <-> Extension) ---
   const configuredPortalUrl = (import.meta as any).env?.VITE_WEB_PORTAL_URL || 'http://localhost:3000';
-  let configuredPortalHost = '';
-  try {
-    configuredPortalHost = new URL(configuredPortalUrl).hostname;
-  } catch {}
+  const TRUSTED_PORTAL_ORIGINS = new Set<string>();
 
-  const isCodemateWeb =
-    window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1' ||
-    (configuredPortalHost !== '' && window.location.hostname === configuredPortalHost);
+  try {
+    TRUSTED_PORTAL_ORIGINS.add(new URL(configuredPortalUrl).origin);
+  } catch {
+    TRUSTED_PORTAL_ORIGINS.add('http://localhost:3000');
+  }
+
+  // Also include any extra origins specified in VITE_ALLOWED_ORIGINS (.env)
+  const envAllowedOrigins = (import.meta as any).env?.VITE_ALLOWED_ORIGINS || '';
+  envAllowedOrigins.split(',').map((s: string) => s.trim()).filter(Boolean).forEach((entry: string) => {
+    try {
+      TRUSTED_PORTAL_ORIGINS.add(new URL(entry).origin);
+    } catch {}
+  });
+
+  const isCodemateWeb = TRUSTED_PORTAL_ORIGINS.has(window.location.origin);
 
   if (isCodemateWeb) {
     // 1. Proactively push existing extension session to web dashboard on load with exact targetOrigin

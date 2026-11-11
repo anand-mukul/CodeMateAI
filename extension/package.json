@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && node scripts/build.cjs",
+    "build:prod": "tsc --noEmit && node scripts/build.cjs --prod",
+    "package": "npm run build:prod",
     "preview": "vite preview"
   },
   "dependencies": {

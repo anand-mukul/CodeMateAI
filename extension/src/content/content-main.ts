@@ -17,9 +17,23 @@ import { EditorOperation, InsertionMode } from '../types/editor';
   const CHANNEL_REQUEST = 'CODEMATE_REQUEST';
   const CHANNEL_RESPONSE = 'CODEMATE_RESPONSE';
 
+  // Secure session authentication handshake for isolated world bridge
+  const sessionSecret =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+  document.documentElement.setAttribute('data-cm-sec', sessionSecret);
+  setTimeout(() => {
+    if (document.documentElement.hasAttribute('data-cm-sec')) {
+      document.documentElement.removeAttribute('data-cm-sec');
+    }
+  }, 250);
+
   const editorManager = EditorManager.getInstance();
 
   interface CustomEventDetail {
+    secret?: string;
     nonce?: string;
     requestId?: string; // backwards compatibility
     operation?: EditorOperation;
@@ -39,6 +53,12 @@ import { EditorOperation, InsertionMode } from '../types/editor';
     const customEvent = event as CustomEvent<CustomEventDetail>;
     const detail = customEvent.detail;
     if (!detail) return;
+
+    // Reject unauthenticated requests from untrusted webpage scripts
+    if (!detail.secret || detail.secret !== sessionSecret) {
+      console.warn('[CodeMate AI Security] Rejected unauthenticated editor bridge request');
+      return;
+    }
 
     // Support both nonce and requestId
     const nonce = detail.nonce || detail.requestId;

@@ -5,19 +5,55 @@
  * Strictly validates message senders, target origins, and request timeouts.
  */
 
-// Trusted API Base URL prefixes (local dev & production)
-const ALLOWED_API_ORIGIN_PATTERNS = [
-  /^http:\/\/127\.0\.0\.1:\d+$/,
-  /^http:\/\/localhost:\d+$/,
-  /^https:\/\/[a-z0-9-]+\.codemateai\.com$/,
-  /^https:\/\/[a-z0-9-]+\.onrender\.com$/,
-];
+// Dynamically resolve trusted API origins from environment variables (.env)
+function getTrustedApiOrigins(): Set<string> {
+  const origins = new Set<string>();
+
+  const configuredApiUrl = (import.meta as any).env?.VITE_API_BASE_URL;
+  if (configuredApiUrl) {
+    try {
+      origins.add(new URL(configuredApiUrl).origin);
+    } catch {}
+  }
+
+  const allowedOriginsStr = (import.meta as any).env?.VITE_ALLOWED_ORIGINS || '';
+  allowedOriginsStr.split(',').map((s: string) => s.trim()).filter(Boolean).forEach((entry: string) => {
+    try {
+      origins.add(new URL(entry).origin);
+    } catch {}
+  });
+
+  // Default fallback if no env provided
+  if (origins.size === 0) {
+    origins.add('http://localhost:8000');
+    origins.add('http://127.0.0.1:8000');
+    origins.add('https://api.codemateai.com');
+  }
+
+  return origins;
+}
+
+const TRUSTED_API_ORIGINS = getTrustedApiOrigins();
 
 function isOriginAllowed(urlStr: string): boolean {
   try {
     const parsed = new URL(urlStr);
     const origin = parsed.origin;
-    return ALLOWED_API_ORIGIN_PATTERNS.some((pat) => pat.test(origin));
+
+    // Direct match against environment-configured origins
+    if (TRUSTED_API_ORIGINS.has(origin)) {
+      return true;
+    }
+
+    // Support local testing port variations if localhost/127.0.0.1 is configured in .env
+    const isLocalConfigured = Array.from(TRUSTED_API_ORIGINS).some(
+      (o) => o.includes('localhost') || o.includes('127.0.0.1')
+    );
+    if (isLocalConfigured && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')) {
+      return true;
+    }
+
+    return false;
   } catch {
     return false;
   }

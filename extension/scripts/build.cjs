@@ -4,12 +4,14 @@ const path = require('path');
 const fs = require('fs');
 
 async function buildExtension() {
-  console.log('--- Starting CodeMate AI Phase 1 Extension Build ---');
+  const isProd = process.argv.includes('--prod');
+  console.log(`--- Starting CodeMate AI ${isProd ? 'PRODUCTION (Chrome Web Store)' : 'DEVELOPMENT'} Extension Build ---`);
   const rootDir = path.resolve(__dirname, '..');
   const outDir = path.resolve(rootDir, 'dist');
 
-  // Load .env if present
-  const envPath = path.resolve(rootDir, '.env');
+  // Load .env or .env.production
+  const envFile = isProd ? '.env.production' : '.env';
+  const envPath = path.resolve(rootDir, envFile);
   if (fs.existsSync(envPath)) {
     const envContent = fs.readFileSync(envPath, 'utf-8');
     envContent.split('\n').forEach((line) => {
@@ -24,13 +26,23 @@ async function buildExtension() {
     });
   }
 
-  const envApiUrl = process.env.VITE_API_BASE_URL || 'http://localhost:8000';
-  const envWebUrl = process.env.VITE_WEB_PORTAL_URL || 'http://localhost:3000';
+  // Domain & Environment configuration from .env
+  const defaultApiUrl = isProd ? 'https://api.codemateai.com' : 'http://localhost:8000';
+  const defaultWebUrl = isProd ? 'https://codemateai.com' : 'http://localhost:3000';
+  const envApiUrl = process.env.VITE_API_BASE_URL || defaultApiUrl;
+  const envWebUrl = process.env.VITE_WEB_PORTAL_URL || defaultWebUrl;
+  const envAllowedOrigins = process.env.VITE_ALLOWED_ORIGINS || '';
+  const envPlatformMatches = process.env.VITE_PLATFORM_MATCHES || 'https://*.codechef.com/*,https://codechef.com/*';
+
   const defineEnv = {
     'import.meta.env.VITE_API_BASE_URL': JSON.stringify(envApiUrl),
     'import.meta.env.VITE_WEB_PORTAL_URL': JSON.stringify(envWebUrl),
+    'import.meta.env.VITE_ALLOWED_ORIGINS': JSON.stringify(envAllowedOrigins),
+    'import.meta.env.VITE_PLATFORM_MATCHES': JSON.stringify(envPlatformMatches),
   };
   console.log(`[+] API Target: ${envApiUrl}`);
+  console.log(`[+] Portal Target: ${envWebUrl}`);
+  console.log(`[+] Allowed Origins (.env): ${envAllowedOrigins || '(derived from API and Portal URLs)'}`);
 
   // Clean dist
   if (fs.existsSync(outDir)) {
@@ -113,11 +125,64 @@ async function buildExtension() {
     },
   });
 
-  // Copy manifest.json & icons
-  console.log('[+] Copying manifest.json and icons...');
-  fs.copyFileSync(
-    path.resolve(rootDir, 'public/manifest.json'),
-    path.resolve(outDir, 'manifest.json')
+  // 5. Dynamically synthesize environment-driven manifest.json
+  const manifestSource = isProd ? 'manifests/manifest.prod.json' : 'manifests/manifest.dev.json';
+  console.log(`[+] Synthesizing environment-driven manifest from ${manifestSource}...`);
+  const manifestRaw = fs.readFileSync(path.resolve(rootDir, manifestSource), 'utf-8');
+  const manifest = JSON.parse(manifestRaw);
+
+  // Parse platform patterns from .env
+  const platformPatterns = envPlatformMatches
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  // Collect host permissions dynamically from environment
+  const hostPermissions = new Set(platformPatterns);
+
+  try {
+    hostPermissions.add(`${new URL(envApiUrl).origin}/*`);
+  } catch {}
+
+  try {
+    hostPermissions.add(`${new URL(envWebUrl).origin}/*`);
+  } catch {}
+
+  if (envAllowedOrigins) {
+    envAllowedOrigins
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((entry) => {
+        try {
+          const origin = new URL(entry).origin;
+          hostPermissions.add(`${origin}/*`);
+        } catch {
+          if (entry.includes('*')) hostPermissions.add(entry);
+        }
+      });
+  }
+
+  manifest.host_permissions = Array.from(hostPermissions);
+
+  // Update content_scripts matches dynamically from environment
+  if (Array.isArray(manifest.content_scripts)) {
+    if (manifest.content_scripts[0]) {
+      manifest.content_scripts[0].matches = platformPatterns;
+    }
+    if (manifest.content_scripts[1]) {
+      const contentMatches = new Set(platformPatterns);
+      try {
+        contentMatches.add(`${new URL(envWebUrl).origin}/*`);
+      } catch {}
+      manifest.content_scripts[1].matches = Array.from(contentMatches);
+    }
+  }
+
+  fs.writeFileSync(
+    path.resolve(outDir, 'manifest.json'),
+    JSON.stringify(manifest, null, 2),
+    'utf-8'
   );
 
   const iconsDir = path.resolve(outDir, 'icons');
@@ -125,6 +190,34 @@ async function buildExtension() {
   fs.cpSync(path.resolve(rootDir, 'public/icons'), iconsDir, { recursive: true });
 
   console.log('✓ CodeMate AI Extension successfully built in dist/');
+
+  // Package production ZIP archive ready for Chrome Web Store upload
+  if (isProd) {
+    console.log('[+] Creating clean production ZIP archive for Chrome Web Store...');
+    const pkgJson = JSON.parse(fs.readFileSync(path.resolve(rootDir, 'package.json'), 'utf-8'));
+    const version = pkgJson.version || '1.0.0';
+    const zipName = `codemate-ai-v${version}.zip`;
+    const zipPath = path.resolve(rootDir, zipName);
+
+    if (fs.existsSync(zipPath)) {
+      fs.rmSync(zipPath, { force: true });
+    }
+
+    try {
+      const { execSync } = require('child_process');
+      execSync(`tar.exe -a -c -f "${zipPath}" -C "${outDir}" .`, { stdio: 'inherit' });
+      console.log(`✓ Production ZIP archive ready: ${zipName}`);
+
+      // Also sync to frontend/public/downloads if present
+      const downloadsDir = path.resolve(rootDir, '../frontend/public/downloads');
+      if (fs.existsSync(downloadsDir)) {
+        fs.copyFileSync(zipPath, path.resolve(downloadsDir, 'codemate-extension.zip'));
+        console.log(`[+] Synced extension download to frontend/public/downloads/codemate-extension.zip`);
+      }
+    } catch (zipErr) {
+      console.warn('[!] Note: Automatic ZIP creation fallback:', zipErr.message);
+    }
+  }
 }
 
 buildExtension().catch((err) => {

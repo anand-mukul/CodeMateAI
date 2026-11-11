@@ -264,12 +264,8 @@ export const AccountView: React.FC<AccountViewProps> = ({ onNotify, onOpenAuthMo
     setCheckoutLoading(plan.id);
     try {
       const order = await AuthService.createOrder(plan.id, appliedCoupon || undefined);
-      const token = await AuthService.getAccessToken();
       const webUrl = AuthService.getWebPortalUrl();
       let checkoutUrl = `${webUrl}/pricing?order_id=${encodeURIComponent(order.order_id)}&plan_id=${encodeURIComponent(plan.id)}`;
-      if (token) {
-        checkoutUrl += `&token=${encodeURIComponent(token)}`;
-      }
       if (appliedCoupon) {
         checkoutUrl += `&coupon=${encodeURIComponent(appliedCoupon)}`;
       }
